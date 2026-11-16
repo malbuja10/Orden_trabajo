@@ -163,3 +163,14 @@ function punto_mapa(array $o, ?string $color = null): array
         'foto' => (bool) $o['foto'],
     ];
 }
+
+/** Ubicacion mas reciente de un medidor: ['latitud' => float, 'longitud' => float] o null. */
+function ubicacion_medidor(?string $medidor): ?array
+{
+    $medidor = trim((string) $medidor);
+    if ($medidor === '') {
+        return null;
+    }
+    $u = q('SELECT latitud, longitud FROM ubicacion_medidor WHERE medidor = ? ORDER BY tiempo DESC LIMIT 1', [$medidor])->fetch();
+    return $u ? ['latitud' => num($u['latitud']), 'longitud' => num($u['longitud'])] : null;
+}

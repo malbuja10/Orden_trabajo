@@ -26,6 +26,7 @@ footer { text-align: center; color: var(--suave); font-size: .8rem; padding: 14p
 
 .aviso { padding: 10px 14px; border-radius: 8px; margin-bottom: 12px; border: 1px solid; }
 .aviso.ok { background: #ecfdf3; border-color: #a7e3bd; color: #14633a; }
+.aviso.info { background: #eff6ff; border-color: #b6d4f5; color: #1e4f8a; }
 .aviso.error { background: #fef2f2; border-color: #f5b5b5; color: #9b1c1c; }
 
 label { display: flex; flex-direction: column; gap: 3px; font-size: .85rem; font-weight: 600; color: #3b4a5a; }

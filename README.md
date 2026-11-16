@@ -31,6 +31,9 @@ el reclamo vuelve a "pendiente" y se genera una nueva orden, conservando el hist
 - `ordenes_trabajo`: asignación (fecha, trabajo, operadores, observaciones, readoquinamiento) y
   ejecución en campo (fecha/hora, trabajo realizado, detalle, readoquinamiento, coordenadas, foto);
   estado `asignada`, `realizada` o `no_realizada`.
+- `ubicacion_medidor`: `medidor` (número de serie), `latitud`, `longitud`, `tiempo` (unix time). Si un reclamo
+  indica un medidor que está en esta tabla, aparece ya ubicado en el mapa de asignación con la ubicación
+  más reciente de ese medidor (el supervisor puede corregirla arrastrando el marcador).
 - `api_tokens`: sesiones de la app móvil.
 
 Esquema completo en [`database/schema.sql`](database/schema.sql).

@@ -26,6 +26,11 @@ if (es_post()) {
             $nuevo = q('INSERT INTO reclamos (fecha, nombre, direccion, reclamo, telefono, medidor, observaciones, creado_por)
                         VALUES (?,?,?,?,?,?,?,?) RETURNING id', [...$datos, $u['id']])->fetchColumn();
             aviso("Reclamo N° $nuevo registrado.");
+            if ($datos[5]) {
+                aviso(ubicacion_medidor($datos[5])
+                    ? "El medidor {$datos[5]} tiene ubicación registrada: el reclamo aparecerá ya ubicado en el mapa."
+                    : "El medidor {$datos[5]} no tiene ubicación registrada: habrá que ubicar el reclamo en el mapa.", 'info');
+            }
         }
     } elseif ($accion === 'anular') {
         $n = q("UPDATE reclamos SET estado='anulado' WHERE id=? AND estado='pendiente'", [$id])->rowCount();

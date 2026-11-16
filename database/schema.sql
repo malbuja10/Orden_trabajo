@@ -20,6 +20,16 @@ CREATE TABLE IF NOT EXISTS trabajos (
     activo  BOOLEAN     NOT NULL DEFAULT TRUE
 );
 
+-- Ubicacion geografica de los medidores. Puede haber varios registros por medidor;
+-- se usa el mas reciente (mayor "tiempo") para ubicar un reclamo que indique el medidor.
+CREATE TABLE IF NOT EXISTS ubicacion_medidor (
+    medidor   VARCHAR(30)      NOT NULL,   -- numero de serie
+    latitud   DOUBLE PRECISION NOT NULL,
+    longitud  DOUBLE PRECISION NOT NULL,
+    tiempo    BIGINT           NOT NULL    -- unix time (segundos)
+);
+CREATE INDEX IF NOT EXISTS idx_ubicacion_medidor ON ubicacion_medidor(medidor, tiempo DESC);
+
 CREATE TABLE IF NOT EXISTS reclamos (
     id             SERIAL PRIMARY KEY,
     fecha          DATE         NOT NULL DEFAULT CURRENT_DATE,

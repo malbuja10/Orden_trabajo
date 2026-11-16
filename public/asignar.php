@@ -58,8 +58,14 @@ if (es_post()) {
     redirigir('asignar.php');
 }
 
-$pendientes = q("SELECT id, fecha, nombre, direccion, reclamo, telefono, medidor, observaciones, latitud, longitud
-                 FROM reclamos WHERE estado='pendiente' ORDER BY fecha, id")->fetchAll();
+// Si el reclamo aun no fue ubicado y tiene medidor, se propone la ubicacion mas reciente del medidor.
+$pendientes = q("SELECT r.id, r.fecha, r.nombre, r.direccion, r.reclamo, r.telefono, r.medidor, r.observaciones,
+                        COALESCE(r.latitud, m.latitud) AS latitud, COALESCE(r.longitud, m.longitud) AS longitud,
+                        (r.latitud IS NULL AND m.latitud IS NOT NULL) AS por_medidor
+                 FROM reclamos r
+                 LEFT JOIN LATERAL (SELECT latitud, longitud FROM ubicacion_medidor u
+                                    WHERE u.medidor = btrim(r.medidor) ORDER BY u.tiempo DESC LIMIT 1) m ON TRUE
+                 WHERE r.estado='pendiente' ORDER BY r.fecha, r.id")->fetchAll();
 foreach ($pendientes as &$p) {
     $p['latitud'] = num($p['latitud']);
     $p['longitud'] = num($p['longitud']);
@@ -86,7 +92,7 @@ cabecera('Asignar Órdenes de Trabajo', true);
       <?php foreach ($pendientes as $r): ?>
       <button type="button" class="reclamo-item" data-id="<?= h($r['id']) ?>">
         <strong>N° <?= h($r['id']) ?> · <?= h($r['nombre']) ?></strong>
-        <span class="suave"><?= fecha_es($r['fecha']) ?><?= $r['latitud'] !== null ? ' · 📍 ubicado' : '' ?></span>
+        <span class="suave"><?= fecha_es($r['fecha']) ?><?= $r['latitud'] !== null ? ($r['por_medidor'] ? ' · 📍 ubicado por medidor' : ' · 📍 ubicado') : '' ?></span>
         <span><?= h($r['direccion']) ?></span>
         <span><?= h($r['reclamo']) ?></span>
       </button>
@@ -180,7 +186,7 @@ cabecera('Asignar Órdenes de Trabajo', true);
     porId[r.id] = r;
     if (r.latitud === null) return;
     r.marca = OT.circulo(r.latitud, r.longitud, '#6b7280').addTo(mapa)
-      .bindTooltip('Reclamo N° ' + r.id + ' (pendiente)')
+      .bindTooltip('Reclamo N° ' + r.id + (r.por_medidor ? ' (pendiente, ubicado por medidor ' + OT.esc(r.medidor) + ')' : ' (pendiente)'))
       .on('click', () => seleccionar(r.id));
     puntos.push([r.latitud, r.longitud]);
   });
@@ -217,6 +223,9 @@ cabecera('Asignar Órdenes de Trabajo', true);
     if (marcador) { mapa.removeLayer(marcador); marcador = null; }
     if (r.latitud !== null) {
       ubicar(r.latitud, r.longitud);
+      if (r.por_medidor) {
+        document.getElementById('ayuda-ubicacion').textContent = 'Ubicado por el medidor ' + r.medidor + ' (puede arrastrar el marcador para corregir)';
+      }
       mapa.setView([r.latitud, r.longitud], Math.max(mapa.getZoom(), 16));
     } else {
       document.getElementById('ayuda-ubicacion').textContent = 'Haga clic en el mapa para ubicar el reclamo.';
