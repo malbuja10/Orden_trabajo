@@ -81,6 +81,20 @@ const MENU = [
     'trabajos.php'      => 'Trabajos',
 ];
 
+/** Parametros de la busqueda de calles para el navegador. */
+function config_busqueda(): array
+{
+    $b = config('busqueda') ?? [];
+    $m = config('mapa');
+    $r = (float) ($b['radio_grados'] ?? 0.15);
+    return [
+        'url' => $b['url'] ?? 'https://nominatim.openstreetmap.org/search',
+        'pais' => $b['pais'] ?? '',
+        // viewbox de Nominatim: oeste,norte,este,sur
+        'viewbox' => implode(',', [$m['lng'] - $r, $m['lat'] + $r, $m['lng'] + $r, $m['lat'] - $r]),
+    ];
+}
+
 function cabecera(string $titulo, bool $conMapa = false): void
 {
     $u = usuario_actual();
@@ -117,7 +131,8 @@ function cabecera(string $titulo, bool $conMapa = false): void
     unset($_SESSION['avisos']);
     if ($conMapa): ?>
 <script src="assets/leaflet/leaflet.js"></script>
-<script>window.OT_MAPA = <?= json_encode(config('mapa')) ?>;</script>
+<script>window.OT_MAPA = <?= json_encode(config('mapa')) ?>;
+window.OT_BUSQUEDA = <?= json_encode(config_busqueda()) ?>;</script>
 <script src="assets/app.js"></script>
 <?php endif;
 }

@@ -87,7 +87,7 @@ cabecera('Asignar Órdenes de Trabajo', true);
 <div class="dos-columnas">
   <section class="tarjeta lista-pendientes">
     <h2>Reclamos pendientes <span class="contador"><?= count($pendientes) ?></span></h2>
-    <p class="suave">1. Seleccione un reclamo · 2. Haga clic en el mapa para ubicarlo · 3. Complete la orden.</p>
+    <p class="suave">1. Seleccione un reclamo · 2. Búsquelo en el mapa o haga clic para ubicarlo · 3. Complete la orden.</p>
     <div id="pendientes">
       <?php foreach ($pendientes as $r): ?>
       <button type="button" class="reclamo-item" data-id="<?= h($r['id']) ?>">
@@ -169,6 +169,10 @@ cabecera('Asignar Órdenes de Trabajo', true);
   const reclamos = <?= json_js($pendientes) ?>;
   const asignadas = <?= json_js(array_map(fn($o) => ['id' => $o['id'], 'lat' => num($o['lat']), 'lng' => num($o['lng']), 'trabajo' => $o['trabajo'], 'color' => $o['trabajo_color'], 'direccion' => $o['direccion'], 'grupo' => grupo_texto($o)], $asignadas)) ?>;
   const mapa = OT.crearMapa('mapa');
+  const buscador = OT.buscador(mapa, (lat, lng) => {
+    if (document.getElementById('reclamo_id').value) ubicar(lat, lng);
+    else document.getElementById('ayuda-ubicacion').textContent = 'Seleccione un reclamo de la lista y haga clic en el mapa para ubicarlo.';
+  });
   const porId = {};
   const puntos = [];
   let marcador = null;
@@ -228,7 +232,8 @@ cabecera('Asignar Órdenes de Trabajo', true);
       }
       mapa.setView([r.latitud, r.longitud], Math.max(mapa.getZoom(), 16));
     } else {
-      document.getElementById('ayuda-ubicacion').textContent = 'Haga clic en el mapa para ubicar el reclamo.';
+      document.getElementById('ayuda-ubicacion').textContent = 'Busque la calle o referencia en el mapa, o haga clic en el mapa para ubicar el reclamo.';
+      buscador.ponerTexto(r.direccion);
     }
   }
 

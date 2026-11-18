@@ -13,6 +13,7 @@ agua potable (acometidas, fugas, adoquinamientos, etc.).
 | Login | `login.php` | Ingreso con correo y contraseña (supervisores). |
 | a) Reclamos | `reclamos.php` | Registro de reclamos: fecha, nombre, dirección, reclamo, teléfono, medidor, observaciones. |
 | b) Asignar órdenes | `asignar.php` | Lista de reclamos pendientes + mapa: el supervisor ubica el reclamo y genera la Orden (fecha de asignación, trabajo, grupo de 1 o 2 operadores, observaciones, readoquinamiento). |
+| | | En el mapa de asignación hay un buscador de calles y referencias (OpenStreetMap / Nominatim); se configura en `busqueda` de `config.php`. |
 | c) Mapa diario | `mapa_diario.php` | Órdenes realizadas en un día (opcionalmente no realizadas y por realizar). |
 | d) Reporte | `ordenes.php`, `orden.php` | Órdenes realizadas y no realizadas con filtros, exportación CSV e impresión; detalle de cada orden con foto y mapa. |
 | e) Mapa temático | `mapa_tematico.php` | Diario o mensual; tipos de trabajo realizados por color, con leyenda. |

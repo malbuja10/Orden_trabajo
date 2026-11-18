@@ -16,6 +16,73 @@ window.OT = {
     });
   },
 
+  // Agrega al mapa un buscador de calles y referencias (Nominatim de OpenStreetMap).
+  // alElegir(lat, lng, nombre) se llama cuando el usuario elige un resultado.
+  // Solo consulta al presionar Buscar (la politica de Nominatim no permite autocompletar).
+  buscador(mapa, alElegir) {
+    const cfg = window.OT_BUSQUEDA;
+    const Control = L.Control.extend({
+      onAdd() {
+        const div = L.DomUtil.create('div', 'ot-buscador');
+        div.innerHTML =
+          '<form><input type="search" placeholder="Buscar calle o referencia…" aria-label="Buscar calle o referencia">' +
+          '<button type="submit">Buscar</button></form><div class="ot-resultados" hidden></div>';
+        L.DomEvent.disableClickPropagation(div);
+        L.DomEvent.disableScrollPropagation(div);
+        return div;
+      }
+    });
+    const control = new Control({position: 'topright'}).addTo(mapa);
+    const div = control.getContainer();
+    const input = div.querySelector('input');
+    const lista = div.querySelector('.ot-resultados');
+    let temporal = null;
+
+    function mostrar(html) {
+      lista.innerHTML = html;
+      lista.hidden = false;
+    }
+
+    div.querySelector('form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const texto = input.value.trim();
+      if (texto.length < 3) return;
+      mostrar('<div class="suave">Buscando…</div>');
+      const params = new URLSearchParams({
+        q: texto, format: 'jsonv2', limit: '8', 'accept-language': 'es',
+        viewbox: cfg.viewbox, bounded: '1'
+      });
+      if (cfg.pais) params.set('countrycodes', cfg.pais);
+      try {
+        const r = await fetch(cfg.url + '?' + params);
+        if (!r.ok) throw new Error(r.status);
+        const datos = await r.json();
+        if (!datos.length) {
+          mostrar('<div class="suave">Sin resultados. Pruebe solo el nombre de la calle o una referencia cercana (parque, escuela…).</div>');
+          return;
+        }
+        mostrar(datos.map((d, i) => '<button type="button" data-i="' + i + '">' + OT.esc(d.display_name) + '</button>').join(''));
+        lista.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+          const d = datos[b.dataset.i];
+          const lat = parseFloat(d.lat), lng = parseFloat(d.lon);
+          lista.hidden = true;
+          mapa.setView([lat, lng], 18);
+          if (temporal) mapa.removeLayer(temporal);
+          temporal = L.circleMarker([lat, lng], {radius: 14, color: '#0b5fa5', weight: 2, dashArray: '4 3', fill: false}).addTo(mapa);
+          if (alElegir) alElegir(lat, lng, d.display_name);
+        }));
+      } catch (err) {
+        mostrar('<div class="suave">No se pudo consultar el servicio de búsqueda. Verifique la conexión a Internet.</div>');
+      }
+    });
+    input.addEventListener('input', () => { if (!input.value) lista.hidden = true; });
+
+    return {
+      // Pone un texto en el buscador sin ejecutar la busqueda
+      ponerTexto(t) { input.value = t || ''; lista.hidden = true; }
+    };
+  },
+
   esc(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
   },

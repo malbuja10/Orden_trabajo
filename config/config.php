@@ -14,6 +14,14 @@ $config = [
     'zona_horaria'  => 'America/Guayaquil',
     // Centro y zoom inicial de los mapas (ajustar a la ciudad de la empresa)
     'mapa' => ['lat' => -0.2202, 'lng' => -78.5123, 'zoom' => 14],
+    // Busqueda de calles y referencias en el mapa (Nominatim de OpenStreetMap).
+    // Solo se buscan resultados dentro de "radio_grados" alrededor del centro del mapa
+    // (0.15 grados ~ 16 km), para no mezclar calles del mismo nombre de otras ciudades.
+    'busqueda' => [
+        'url'         => 'https://nominatim.openstreetmap.org/search',
+        'pais'        => 'ec',
+        'radio_grados' => 0.15,
+    ],
     // Carpeta donde se guardan las fotos de los trabajos (fuera de public/)
     'dir_fotos'     => __DIR__ . '/../storage/fotos',
     'foto_max_bytes' => 8 * 1024 * 1024,
