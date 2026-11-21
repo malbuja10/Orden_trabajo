@@ -72,14 +72,66 @@ function redirigir(string $url): void
 
 const MENU = [
     'reclamos.php'      => 'Reclamos',
-    'asignar.php'       => 'Asignar órdenes',
+    'registrar.php'     => 'Registrar órdenes',
     'mapa_diario.php'   => 'Mapa diario',
     'ordenes.php'       => 'Reporte de órdenes',
     'mapa_tematico.php' => 'Mapa temático',
     'resumen.php'       => 'Resumen',
     'usuarios.php'      => 'Usuarios',
     'trabajos.php'      => 'Trabajos',
+    'observaciones.php' => 'Observaciones',
 ];
+
+/**
+ * Filtro comun de los mapas: estado (todos / pendiente / finalizada) y rango de fechas.
+ * Pendientes se filtran por la fecha del reclamo; finalizadas por la fecha de registro.
+ * Devuelve [estado, desde, hasta, where, params] para consulta_ordenes().
+ */
+function filtro_mapa(): array
+{
+    $estado = in_array($_GET['estado'] ?? '', ['pendiente', 'finalizada'], true) ? $_GET['estado'] : 'todos';
+    $desde = fecha_valida($_GET['desde'] ?? '') ?? date('Y-m-d');
+    $hasta = fecha_valida($_GET['hasta'] ?? '') ?? date('Y-m-d');
+    if ($hasta < $desde) {
+        [$desde, $hasta] = [$hasta, $desde];
+    }
+    $where = ["estado <> 'anulada'", 'fecha_orden BETWEEN ? AND ?'];
+    $params = [$desde, $hasta];
+    if ($estado !== 'todos') {
+        $where[] = 'estado = ?';
+        $params[] = $estado;
+    }
+    return [$estado, $desde, $hasta, implode(' AND ', $where), $params];
+}
+
+function filtro_mapa_html(string $estado, string $desde, string $hasta): void
+{
+    $hoy = date('Y-m-d');
+    $rapidos = [
+        'Hoy' => [$hoy, $hoy],
+        'Últimos 7 días' => [date('Y-m-d', strtotime('-6 days')), $hoy],
+        'Este mes' => [date('Y-m-01'), $hoy],
+        'Este año' => [date('Y-01-01'), $hoy],
+    ];
+    ?>
+<form method="get" class="tarjeta filtros">
+  <label>Mostrar
+    <select name="estado" onchange="this.form.submit()">
+      <?= opciones(['todos' => 'Todos', 'pendiente' => 'Pendientes', 'finalizada' => 'Finalizados'], $estado) ?>
+    </select>
+  </label>
+  <label>Desde <input type="date" name="desde" value="<?= h($desde) ?>"></label>
+  <label>Hasta <input type="date" name="hasta" value="<?= h($hasta) ?>"></label>
+  <button type="submit" class="primario">Ver</button>
+  <span class="rapidos">
+    <?php foreach ($rapidos as $txt => [$d, $hst]): ?>
+      <a href="?<?= h(http_build_query(['estado' => $estado, 'desde' => $d, 'hasta' => $hst])) ?>"<?= $d === $desde && $hst === $hasta ? ' class="activo"' : '' ?>><?= h($txt) ?></a>
+    <?php endforeach; ?>
+  </span>
+  <span class="suave ancho-total">Pendientes por fecha del reclamo; finalizados por fecha de registro.</span>
+</form>
+<?php
+}
 
 /** Parametros de la busqueda de calles para el navegador. */
 function config_busqueda(): array

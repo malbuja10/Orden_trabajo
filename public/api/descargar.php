@@ -1,10 +1,9 @@
 <?php
-// API c) Descargar al servidor la informacion de los trabajos realizados.
+// API c) Descargar al servidor los datos de campo de los trabajos realizados.
 // POST con "Authorization: Bearer <token>", en uno de dos formatos:
-//   - application/json: {"ordenes": [{..., "foto": "<base64>"}]}
-//   - multipart/form-data: campo "datos" con el mismo JSON y archivos "foto_<id>"
-// Cada orden: id, realizada, fecha_realizacion, trabajo_id, detalle, readoquinamiento,
-//             latitud, longitud, motivo_no_realizada.
+//   - application/json: {"ordenes": [{"id": 1, "fecha": "...", "latitud": ..., "longitud": ..., "detalle": "...", "foto": "<base64>"}]}
+//   - multipart/form-data: campo "datos" con el mismo JSON (sin foto) y archivos "foto_<id>"
+// La orden sigue pendiente hasta que el supervisor registra quien hizo el trabajo.
 declare(strict_types=1);
 require __DIR__ . '/../../src/api.php';
 
@@ -20,22 +19,9 @@ $resultados = [];
 foreach ($in['ordenes'] as $d) {
     $id = is_array($d) ? (int) ($d['id'] ?? 0) : 0;
     try {
-        $orden = q('SELECT estado, operador1_id, operador2_id FROM ordenes_trabajo WHERE id = ?', [$id])->fetch();
-        if (!$orden) {
-            throw new RuntimeException('La orden no existe.');
+        if (!$id) {
+            throw new RuntimeException('Falta el id de la orden.');
         }
-        if (!in_array($u['id'], [$orden['operador1_id'], $orden['operador2_id']], true)) {
-            throw new RuntimeException('La orden no está asignada a este operador.');
-        }
-        if ($orden['estado'] !== 'asignada') {
-            // Reenvio de algo ya sincronizado: se informa como correcto para que la app lo retire.
-            $resultados[] = ['id' => $id, 'ok' => true, 'mensaje' => 'La orden ya estaba registrada.'];
-            continue;
-        }
-        if (!array_key_exists('realizada', $d)) {
-            throw new RuntimeException('Falta el campo "realizada".');
-        }
-
         $foto = null;
         $archivo = $_FILES['foto_' . $id] ?? null;
         if ($archivo && $archivo['error'] === UPLOAD_ERR_OK) {
@@ -50,8 +36,9 @@ foreach ($in['ordenes'] as $d) {
             }
         }
 
-        registrar_resultado($id, $d, $foto, (int) $u['id']);
-        $resultados[] = ['id' => $id, 'ok' => true];
+        $nuevo = registrar_datos_campo($id, $d, $foto, (int) $u['id']);
+        // Un reenvio de algo ya recibido se informa como correcto para que la app lo retire.
+        $resultados[] = $nuevo ? ['id' => $id, 'ok' => true] : ['id' => $id, 'ok' => true, 'mensaje' => 'La orden ya tenía datos de campo.'];
     } catch (RuntimeException $e) {
         $resultados[] = ['id' => $id, 'ok' => false, 'error' => $e->getMessage()];
     }

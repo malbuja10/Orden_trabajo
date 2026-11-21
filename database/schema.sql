@@ -1,6 +1,7 @@
--- Sistema de Ordenes de Trabajo - Esquema PostgreSQL
--- Reclamos y Ordenes de trabajo son tablas separadas: un reclamo puede generar
--- mas de una orden (p. ej. si la primera no se pudo realizar y se reasigna).
+-- Sistema de Ordenes de Trabajo - Esquema PostgreSQL (version 2)
+-- Cada reclamo registrado es directamente una Orden de Trabajo pendiente (una sola tabla).
+-- Cualquier operador puede realizarla; al regresar a la oficina, el supervisor registra
+-- quien hizo el trabajo y la orden queda finalizada.
 
 CREATE TABLE IF NOT EXISTS usuarios (
     id          SERIAL PRIMARY KEY,
@@ -12,7 +13,8 @@ CREATE TABLE IF NOT EXISTS usuarios (
     creado_en   TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
--- Tipos de trabajo (acometida, fuga, adoquinamiento, ...). El color se usa en el mapa tematico.
+-- Tipos de trabajo (acometida, fuga, adoquinamiento, ...). Es tambien el "reclamo".
+-- El color se usa en el mapa tematico.
 CREATE TABLE IF NOT EXISTS trabajos (
     id      SERIAL PRIMARY KEY,
     nombre  VARCHAR(80) NOT NULL UNIQUE,
@@ -20,8 +22,26 @@ CREATE TABLE IF NOT EXISTS trabajos (
     activo  BOOLEAN     NOT NULL DEFAULT TRUE
 );
 
+-- Catalogo de observaciones del reclamo
+CREATE TABLE IF NOT EXISTS observaciones (
+    id      SERIAL PRIMARY KEY,
+    nombre  VARCHAR(120) NOT NULL UNIQUE,
+    activo  BOOLEAN      NOT NULL DEFAULT TRUE
+);
+
+-- Cuentas de los clientes (se cargan desde el sistema comercial, p. ej. con un CSV).
+-- Si la cuenta no tiene coordenadas, se usan las de su medidor en ubicacion_medidor.
+CREATE TABLE IF NOT EXISTS cuentas (
+    cuenta     VARCHAR(30) PRIMARY KEY,
+    nombre     VARCHAR(160),
+    direccion  VARCHAR(200),
+    medidor    VARCHAR(30),
+    latitud    DOUBLE PRECISION,
+    longitud   DOUBLE PRECISION
+);
+
 -- Ubicacion geografica de los medidores. Puede haber varios registros por medidor;
--- se usa el mas reciente (mayor "tiempo") para ubicar un reclamo que indique el medidor.
+-- se usa el mas reciente (mayor "tiempo").
 CREATE TABLE IF NOT EXISTS ubicacion_medidor (
     medidor   VARCHAR(30)      NOT NULL,   -- numero de serie
     latitud   DOUBLE PRECISION NOT NULL,
@@ -30,55 +50,45 @@ CREATE TABLE IF NOT EXISTS ubicacion_medidor (
 );
 CREATE INDEX IF NOT EXISTS idx_ubicacion_medidor ON ubicacion_medidor(medidor, tiempo DESC);
 
-CREATE TABLE IF NOT EXISTS reclamos (
-    id             SERIAL PRIMARY KEY,
-    fecha          DATE         NOT NULL DEFAULT CURRENT_DATE,
-    nombre         VARCHAR(120) NOT NULL,
-    direccion      VARCHAR(200) NOT NULL,
-    reclamo        TEXT         NOT NULL,
-    telefono       VARCHAR(30),
-    medidor        VARCHAR(30),
-    observaciones  TEXT,
-    latitud        DOUBLE PRECISION,   -- ubicacion aproximada puesta por el supervisor
-    longitud       DOUBLE PRECISION,
-    estado         VARCHAR(12)  NOT NULL DEFAULT 'pendiente'
-                   CHECK (estado IN ('pendiente', 'asignado', 'atendido', 'anulado')),
-    creado_por     INTEGER REFERENCES usuarios(id),
-    creado_en      TIMESTAMPTZ  NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_reclamos_estado ON reclamos(estado);
-
 CREATE TABLE IF NOT EXISTS ordenes_trabajo (
-    id                   SERIAL PRIMARY KEY,
-    reclamo_id           INTEGER NOT NULL REFERENCES reclamos(id),
-    -- Asignacion (supervisor)
-    fecha_asignacion     DATE    NOT NULL DEFAULT CURRENT_DATE,
-    trabajo_id           INTEGER NOT NULL REFERENCES trabajos(id),
-    operador1_id         INTEGER NOT NULL REFERENCES usuarios(id),
-    operador2_id         INTEGER REFERENCES usuarios(id),
-    observaciones        TEXT,
-    readoquinamiento     BOOLEAN NOT NULL DEFAULT FALSE,
-    supervisor_id        INTEGER REFERENCES usuarios(id),
-    estado               VARCHAR(12) NOT NULL DEFAULT 'asignada'
-                         CHECK (estado IN ('asignada', 'realizada', 'no_realizada')),
-    creado_en            TIMESTAMPTZ NOT NULL DEFAULT now(),
-    -- Ejecucion (operadores, desde la app movil)
-    fecha_realizacion    TIMESTAMP,
-    trabajo_realizado_id INTEGER REFERENCES trabajos(id),
-    detalle_realizado    TEXT,
-    readoquinamiento_real BOOLEAN,
-    latitud_real         DOUBLE PRECISION,
-    longitud_real        DOUBLE PRECISION,
-    foto                 VARCHAR(120),
-    motivo_no_realizada  TEXT,
-    registrado_por       INTEGER REFERENCES usuarios(id),
-    sincronizado_en      TIMESTAMPTZ,
-    CHECK (operador2_id IS NULL OR operador2_id <> operador1_id)
+    id               SERIAL PRIMARY KEY,
+    -- Reclamo (pagina Reclamos)
+    fecha            DATE         NOT NULL DEFAULT CURRENT_DATE,
+    cuenta           VARCHAR(30),
+    nombre           VARCHAR(160) NOT NULL,
+    direccion        VARCHAR(200) NOT NULL,
+    telefono         VARCHAR(30),
+    trabajo_id       INTEGER      NOT NULL REFERENCES trabajos(id),      -- reclamo / trabajo a realizar
+    observacion_id   INTEGER      REFERENCES observaciones(id),
+    latitud          DOUBLE PRECISION NOT NULL,
+    longitud         DOUBLE PRECISION NOT NULL,
+    estado           VARCHAR(12)  NOT NULL DEFAULT 'pendiente'
+                     CHECK (estado IN ('pendiente', 'finalizada', 'anulada')),
+    creado_por       INTEGER      REFERENCES usuarios(id),
+    creado_en        TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    -- Registro del trabajo realizado (pagina Registrar ordenes, supervisor)
+    fecha_registro   DATE,
+    operador1_id     INTEGER      REFERENCES usuarios(id),
+    operador2_id     INTEGER      REFERENCES usuarios(id),
+    readoquinamiento BOOLEAN      NOT NULL DEFAULT FALSE,
+    detalle          TEXT,
+    registrado_por   INTEGER      REFERENCES usuarios(id),
+    registrado_en    TIMESTAMPTZ,
+    -- Datos de campo enviados desde la app movil
+    fecha_campo      TIMESTAMP,
+    latitud_campo    DOUBLE PRECISION,
+    longitud_campo   DOUBLE PRECISION,
+    foto             VARCHAR(120),
+    detalle_campo    TEXT,
+    enviado_por      INTEGER      REFERENCES usuarios(id),
+    sincronizado_en  TIMESTAMPTZ,
+    CHECK (operador2_id IS NULL OR operador2_id <> operador1_id),
+    CHECK (estado <> 'finalizada' OR (fecha_registro IS NOT NULL AND operador1_id IS NOT NULL))
 );
-CREATE INDEX IF NOT EXISTS idx_ordenes_fecha_asig ON ordenes_trabajo(fecha_asignacion);
-CREATE INDEX IF NOT EXISTS idx_ordenes_fecha_real ON ordenes_trabajo(fecha_realizacion);
-CREATE INDEX IF NOT EXISTS idx_ordenes_estado     ON ordenes_trabajo(estado);
-CREATE INDEX IF NOT EXISTS idx_ordenes_reclamo    ON ordenes_trabajo(reclamo_id);
+CREATE INDEX IF NOT EXISTS idx_ot_estado         ON ordenes_trabajo(estado);
+CREATE INDEX IF NOT EXISTS idx_ot_fecha          ON ordenes_trabajo(fecha);
+CREATE INDEX IF NOT EXISTS idx_ot_fecha_registro ON ordenes_trabajo(fecha_registro);
+CREATE INDEX IF NOT EXISTS idx_ot_cuenta         ON ordenes_trabajo(cuenta);
 
 -- Tokens de sesion de la app movil (se guarda solo el SHA-256 del token)
 CREATE TABLE IF NOT EXISTS api_tokens (

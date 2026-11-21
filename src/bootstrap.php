@@ -83,6 +83,5 @@ function fecha_es(?string $s): string
     return strlen($s) > 10 ? date('d/m/Y H:i', $t) : date('d/m/Y', $t);
 }
 
-const ESTADOS_ORDEN = ['asignada' => 'Asignada', 'realizada' => 'Realizada', 'no_realizada' => 'No realizada'];
-const ESTADOS_RECLAMO = ['pendiente' => 'Pendiente', 'asignado' => 'Asignado', 'atendido' => 'Atendido', 'anulado' => 'Anulado'];
+const ESTADOS_ORDEN = ['pendiente' => 'Pendiente', 'finalizada' => 'Finalizada', 'anulada' => 'Anulada'];
 const MESES = [1 => 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];

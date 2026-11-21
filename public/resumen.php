@@ -1,33 +1,33 @@
 <?php
-// f) Resumen mensual y anual de Ordenes de trabajo.
+// f) Resumen mensual y anual de Ordenes de trabajo (sin contar las anuladas).
 declare(strict_types=1);
 require __DIR__ . '/../src/web.php';
 requerir_login();
 
-$anios = q('SELECT DISTINCT EXTRACT(YEAR FROM fecha_asignacion)::int FROM ordenes_trabajo ORDER BY 1 DESC')->fetchAll(PDO::FETCH_COLUMN);
+$anios = q("SELECT DISTINCT EXTRACT(YEAR FROM fecha)::int FROM ordenes_trabajo WHERE estado <> 'anulada' ORDER BY 1 DESC")->fetchAll(PDO::FETCH_COLUMN);
 $anio = (int) ($_GET['anio'] ?? date('Y'));
 if (!in_array($anio, $anios, true)) {
     $anios[] = $anio;
     rsort($anios);
 }
 
-// Ordenes por mes de asignacion y estado
-$porMes = array_fill(1, 12, ['asignada' => 0, 'realizada' => 0, 'no_realizada' => 0]);
+// Ordenes por mes del reclamo y estado
+$porMes = array_fill(1, 12, ['finalizada' => 0, 'pendiente' => 0]);
 foreach (q(
-    'SELECT EXTRACT(MONTH FROM fecha_asignacion)::int AS mes, estado, COUNT(*) AS n
-     FROM ordenes_trabajo WHERE EXTRACT(YEAR FROM fecha_asignacion) = ? GROUP BY 1, 2',
+    "SELECT EXTRACT(MONTH FROM fecha)::int AS mes, estado, COUNT(*) AS n
+     FROM ordenes_trabajo WHERE estado <> 'anulada' AND EXTRACT(YEAR FROM fecha) = ? GROUP BY 1, 2",
     [$anio]
 ) as $f) {
     $porMes[$f['mes']][$f['estado']] = $f['n'];
 }
 
-// Trabajos realizados por tipo y mes de realizacion
+// Trabajos finalizados por tipo y mes de registro
 $tipos = [];
 foreach (q(
-    "SELECT t.nombre, t.color, EXTRACT(MONTH FROM o.fecha_realizacion)::int AS mes, COUNT(*) AS n,
-            COUNT(*) FILTER (WHERE o.readoquinamiento_real) AS readoq
-     FROM ordenes_trabajo o JOIN trabajos t ON t.id = COALESCE(o.trabajo_realizado_id, o.trabajo_id)
-     WHERE o.estado = 'realizada' AND EXTRACT(YEAR FROM o.fecha_realizacion) = ?
+    "SELECT t.nombre, t.color, EXTRACT(MONTH FROM o.fecha_registro)::int AS mes, COUNT(*) AS n,
+            COUNT(*) FILTER (WHERE o.readoquinamiento) AS readoq
+     FROM ordenes_trabajo o JOIN trabajos t ON t.id = o.trabajo_id
+     WHERE o.estado = 'finalizada' AND EXTRACT(YEAR FROM o.fecha_registro) = ?
      GROUP BY 1, 2, 3 ORDER BY 1",
     [$anio]
 ) as $f) {
@@ -38,15 +38,14 @@ foreach (q(
 
 // Resumen anual (todos los anios)
 $anual = q(
-    "SELECT EXTRACT(YEAR FROM fecha_asignacion)::int AS anio, COUNT(*) AS total,
-            COUNT(*) FILTER (WHERE estado='realizada') AS realizadas,
-            COUNT(*) FILTER (WHERE estado='no_realizada') AS no_realizadas,
-            COUNT(*) FILTER (WHERE estado='asignada') AS pendientes,
-            COUNT(*) FILTER (WHERE readoquinamiento_real) AS readoq
-     FROM ordenes_trabajo GROUP BY 1 ORDER BY 1 DESC"
+    "SELECT EXTRACT(YEAR FROM fecha)::int AS anio, COUNT(*) AS total,
+            COUNT(*) FILTER (WHERE estado='finalizada') AS finalizadas,
+            COUNT(*) FILTER (WHERE estado='pendiente') AS pendientes,
+            COUNT(*) FILTER (WHERE estado='finalizada' AND readoquinamiento) AS readoq
+     FROM ordenes_trabajo WHERE estado <> 'anulada' GROUP BY 1 ORDER BY 1 DESC"
 )->fetchAll();
 
-$tot = ['asignada' => 0, 'realizada' => 0, 'no_realizada' => 0];
+$tot = ['finalizada' => 0, 'pendiente' => 0];
 foreach ($porMes as $m) {
     foreach ($tot as $k => $_) {
         $tot[$k] += $m[$k];
@@ -63,35 +62,34 @@ cabecera('Resumen de Órdenes de Trabajo');
 </form>
 
 <section class="tarjeta">
-  <h2>Resumen mensual <?= $anio ?> — órdenes por mes de asignación</h2>
+  <h2>Resumen mensual <?= $anio ?> — órdenes por mes del reclamo</h2>
   <div class="tabla-scroll">
   <table class="numeros">
-    <thead><tr><th>Mes</th><th>Total</th><th>Realizadas</th><th>No realizadas</th><th>Por realizar</th><th>% Cumplimiento</th><th class="izq">Distribución</th></tr></thead>
+    <thead><tr><th>Mes</th><th>Total</th><th>Finalizadas</th><th>Pendientes</th><th>% Cumplimiento</th><th class="izq">Distribución</th></tr></thead>
     <tbody>
     <?php foreach ($porMes as $mes => $m): $total = array_sum($m); ?>
       <tr>
         <th><a href="ordenes.php?desde=<?= sprintf('%d-%02d-01', $anio, $mes) ?>&amp;hasta=<?= date('Y-m-t', mktime(0, 0, 0, $mes, 1, $anio)) ?>"><?= MESES[$mes] ?></a></th>
         <td><b><?= $total ?></b></td>
-        <td><?= $m['realizada'] ?></td>
-        <td><?= $m['no_realizada'] ?></td>
-        <td><?= $m['asignada'] ?></td>
-        <td><?= $pct($m['realizada'], $total) ?></td>
+        <td><?= $m['finalizada'] ?></td>
+        <td><?= $m['pendiente'] ?></td>
+        <td><?= $pct($m['finalizada'], $total) ?></td>
         <td class="izq"><div class="barra-apilada" style="width:<?= round(100 * $total / $maxMes) ?>%">
-          <?php foreach (['realizada' => 'verde', 'no_realizada' => 'rojo', 'asignada' => 'ambar'] as $k => $clase): if ($m[$k]): ?>
+          <?php foreach (['finalizada' => 'verde', 'pendiente' => 'ambar'] as $k => $clase): if ($m[$k]): ?>
             <span class="f-<?= $clase ?>" style="flex:<?= $m[$k] ?>" title="<?= ESTADOS_ORDEN[$k] ?>: <?= $m[$k] ?>"></span>
           <?php endif; endforeach; ?>
         </div></td>
       </tr>
     <?php endforeach; ?>
     </tbody>
-    <tfoot><tr><th>Total <?= $anio ?></th><td><b><?= array_sum($tot) ?></b></td><td><?= $tot['realizada'] ?></td><td><?= $tot['no_realizada'] ?></td><td><?= $tot['asignada'] ?></td><td><?= $pct($tot['realizada'], array_sum($tot)) ?></td><td></td></tr></tfoot>
+    <tfoot><tr><th>Total <?= $anio ?></th><td><b><?= array_sum($tot) ?></b></td><td><?= $tot['finalizada'] ?></td><td><?= $tot['pendiente'] ?></td><td><?= $pct($tot['finalizada'], array_sum($tot)) ?></td><td></td></tr></tfoot>
   </table>
   </div>
-  <p class="leyenda"><span><span class="punto f-verde"></span>Realizadas</span><span><span class="punto f-rojo"></span>No realizadas</span><span><span class="punto f-ambar"></span>Por realizar</span></p>
+  <p class="leyenda"><span><span class="punto f-verde"></span>Finalizadas</span><span><span class="punto f-ambar"></span>Pendientes</span></p>
 </section>
 
 <section class="tarjeta">
-  <h2>Trabajos realizados por tipo <?= $anio ?> — por mes de realización</h2>
+  <h2>Trabajos finalizados por tipo <?= $anio ?> — por mes de registro</h2>
   <div class="tabla-scroll">
   <table class="numeros">
     <thead><tr><th>Tipo de trabajo</th><?php foreach (MESES as $m): ?><th><?= substr($m, 0, 3) ?></th><?php endforeach; ?><th>Total</th><th>Con readoq.</th></tr></thead>
@@ -105,7 +103,7 @@ cabecera('Resumen de Órdenes de Trabajo');
         <td><?= $t['readoq'] ?></td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$tipos): ?><tr><td colspan="15" class="suave centro">No hay trabajos realizados en <?= $anio ?>.</td></tr><?php endif; ?>
+    <?php if (!$tipos): ?><tr><td colspan="15" class="suave centro">No hay trabajos finalizados en <?= $anio ?>.</td></tr><?php endif; ?>
     </tbody>
     <tfoot><tr><th>Total</th><?php foreach ($totMes as $n): ?><td><?= $n ?></td><?php endforeach; ?><td><b><?= array_sum($totMes) ?></b></td><td><?= $totReadoq ?></td></tr></tfoot>
   </table>
@@ -116,16 +114,16 @@ cabecera('Resumen de Órdenes de Trabajo');
   <h2>Resumen anual</h2>
   <div class="tabla-scroll">
   <table class="numeros">
-    <thead><tr><th>Año</th><th>Total órdenes</th><th>Realizadas</th><th>No realizadas</th><th>Por realizar</th><th>% Cumplimiento</th><th>Con readoquinamiento</th></tr></thead>
+    <thead><tr><th>Año</th><th>Total órdenes</th><th>Finalizadas</th><th>Pendientes</th><th>% Cumplimiento</th><th>Con readoquinamiento</th></tr></thead>
     <tbody>
     <?php foreach ($anual as $a): ?>
       <tr>
         <th><a href="resumen.php?anio=<?= $a['anio'] ?>"><?= $a['anio'] ?></a></th>
-        <td><b><?= $a['total'] ?></b></td><td><?= $a['realizadas'] ?></td><td><?= $a['no_realizadas'] ?></td><td><?= $a['pendientes'] ?></td>
-        <td><?= $pct($a['realizadas'], $a['total']) ?></td><td><?= $a['readoq'] ?></td>
+        <td><b><?= $a['total'] ?></b></td><td><?= $a['finalizadas'] ?></td><td><?= $a['pendientes'] ?></td>
+        <td><?= $pct($a['finalizadas'], $a['total']) ?></td><td><?= $a['readoq'] ?></td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$anual): ?><tr><td colspan="7" class="suave centro">Aún no hay órdenes registradas.</td></tr><?php endif; ?>
+    <?php if (!$anual): ?><tr><td colspan="6" class="suave centro">Aún no hay órdenes registradas.</td></tr><?php endif; ?>
     </tbody>
   </table>
   </div>

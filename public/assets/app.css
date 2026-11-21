@@ -3,6 +3,7 @@
   --verde: #16a34a; --rojo: #dc2626; --ambar: #f59e0b;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--texto); background: var(--fondo); }
 a { color: var(--azul); }
 h1 { font-size: 1.45rem; margin: 0 0 14px; }
@@ -13,7 +14,7 @@ footer { text-align: center; color: var(--suave); font-size: .8rem; padding: 14p
 .barra { background: var(--azul); color: #fff; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; padding: 8px 16px; }
 .barra .marca { font-weight: 700; font-size: 1.05rem; white-space: nowrap; }
 .barra nav { display: flex; flex-wrap: wrap; gap: 2px; flex: 1; }
-.barra nav a { color: #e3eefa; text-decoration: none; padding: 6px 10px; border-radius: 6px; white-space: nowrap; }
+.barra nav a { color: #e3eefa; text-decoration: none; padding: 6px 8px; font-size: .93rem; border-radius: 6px; white-space: nowrap; }
 .barra nav a:hover { background: rgba(255,255,255,.14); }
 .barra nav a.activo { background: #fff; color: var(--azul-osc); font-weight: 600; }
 .barra .sesion { font-size: .88rem; white-space: nowrap; }
@@ -63,11 +64,10 @@ table.numeros th:first-child, table.numeros .izq { text-align: left; }
 tfoot th, tfoot td { background: #f1f5f9; font-weight: 600; border-top: 2px solid var(--borde); }
 
 .estado { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: .78rem; font-weight: 600; white-space: nowrap; }
-.estado.pendiente, .estado.asignada { background: #fef3c7; color: #92400e; }
+.estado.pendiente { background: #fef3c7; color: #92400e; }
 .estado.asignado { background: #dbeafe; color: #1e40af; }
-.estado.realizada, .estado.atendido { background: #dcfce7; color: #166534; }
-.estado.no_realizada { background: #fee2e2; color: #991b1b; }
-.estado.anulado { background: #e5e7eb; color: #4b5563; }
+.estado.finalizada, .estado.activo { background: #dcfce7; color: #166534; }
+.estado.anulada, .estado.inactivo { background: #e5e7eb; color: #4b5563; }
 .punto { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; border: 1px solid rgba(0,0,0,.2); }
 .contador { background: var(--azul); color: #fff; border-radius: 999px; padding: 0 9px; font-size: .8rem; margin-left: 4px; }
 .verde { color: var(--verde); } .rojo { color: var(--rojo); } .ambar { color: #b45309; }
@@ -80,6 +80,7 @@ tfoot th, tfoot td { background: #f1f5f9; font-weight: 600; border-top: 2px soli
 .mapa-con-leyenda { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 14px; align-items: start; }
 .lista-pendientes #pendientes { max-height: 640px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
 .reclamo-item { text-align: left; display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; font-size: .88rem; }
+.reclamo-item[hidden] { display: none; }
 .reclamo-item.activo { border-color: var(--azul); background: #e8f2fc; box-shadow: inset 3px 0 0 var(--azul); }
 #seleccion { background: #f1f5f9; border-radius: 6px; padding: 8px 10px; font-size: .92rem; }
 
@@ -92,6 +93,14 @@ tfoot th, tfoot td { background: #f1f5f9; font-weight: 600; border-top: 2px soli
 .ot-resultados button { text-align: left; border: 0; border-radius: 4px; padding: 6px 8px; line-height: 1.3; }
 .ot-resultados button:hover { background: #e8f2fc; }
 .ot-resultados .suave { padding: 4px 6px; }
+.con-boton { display: flex; gap: 6px; }
+.con-boton input { flex: 1; }
+.rapidos { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: .88rem; align-self: center; }
+.rapidos a.activo { font-weight: 700; text-decoration: none; color: var(--texto); }
+.ancho-total { flex-basis: 100%; }
+.campo-recibido { background: #f0fdf4; border: 1px solid #bbe5c8; border-radius: 6px; padding: 8px 10px; font-size: .9rem; display: flex; gap: 12px; align-items: flex-start; }
+.foto-mini { width: 120px; height: 90px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
+.editando { background: #fff7e6; border: 1px solid #f3d08a; border-radius: 6px; padding: 8px 10px; }
 .leyenda { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .9rem; margin: 8px 0 0; }
 .leyenda-fila { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #eef1f5; }
 .indicadores { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }

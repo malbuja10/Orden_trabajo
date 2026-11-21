@@ -82,7 +82,7 @@ cabecera('Usuarios');
         <td><?= h($x['nombre']) ?></td>
         <td><?= h($x['correo']) ?></td>
         <td><?= $x['rol'] === 'supervisor' ? 'Supervisor' : 'Operador' ?></td>
-        <td><span class="estado <?= $x['activo'] ? 'realizada' : 'anulado' ?>"><?= $x['activo'] ? 'Activo' : 'Inactivo' ?></span></td>
+        <td><span class="estado <?= $x['activo'] ? 'activo' : 'inactivo' ?>"><?= $x['activo'] ? 'Activo' : 'Inactivo' ?></span></td>
         <td><a href="usuarios.php?editar=<?= h($x['id']) ?>">Editar</a></td>
       </tr>
     <?php endforeach; ?>
