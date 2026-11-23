@@ -10,6 +10,12 @@ if (PHP_SAPI !== 'cli') {
 }
 require __DIR__ . '/../src/bootstrap.php';
 
+// Base de datos de la version 1 (tabla reclamos separada): hay que migrar primero.
+if (q("SELECT to_regclass('reclamos') IS NOT NULL")->fetchColumn()) {
+    fwrite(STDERR, "La base de datos tiene la estructura anterior (tabla reclamos).\n"
+        . "Ejecute primero: php database/migrar_v2.php --borrar-datos  (borra reclamos y órdenes)\n");
+    exit(1);
+}
 db()->exec(file_get_contents(__DIR__ . '/schema.sql'));
 echo "Tablas creadas/verificadas.\n";
 

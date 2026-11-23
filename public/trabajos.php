@@ -24,7 +24,7 @@ if (es_post()) {
     redirigir('trabajos.php');
 }
 
-$trabajos = q('SELECT t.*, (SELECT COUNT(*) FROM ordenes_trabajo o WHERE t.id IN (o.trabajo_id, o.trabajo_realizado_id)) AS usos
+$trabajos = q('SELECT t.*, (SELECT COUNT(*) FROM ordenes_trabajo o WHERE o.trabajo_id = t.id) AS usos
                FROM trabajos t ORDER BY t.nombre')->fetchAll();
 $editar = !empty($_GET['editar']) ? (q('SELECT * FROM trabajos WHERE id = ?', [(int) $_GET['editar']])->fetch() ?: null) : null;
 
@@ -54,12 +54,12 @@ cabecera('Tipos de trabajo');
         <td><?= h($t['nombre']) ?></td>
         <td><span class="punto" style="background:<?= h($t['color']) ?>"></span><code><?= h($t['color']) ?></code></td>
         <td><?= h($t['usos']) ?></td>
-        <td><span class="estado <?= $t['activo'] ? 'realizada' : 'anulado' ?>"><?= $t['activo'] ? 'Activo' : 'Inactivo' ?></span></td>
+        <td><span class="estado <?= $t['activo'] ? 'activo' : 'inactivo' ?>"><?= $t['activo'] ? 'Activo' : 'Inactivo' ?></span></td>
         <td><a href="trabajos.php?editar=<?= h($t['id']) ?>">Editar</a></td>
       </tr>
     <?php endforeach; ?>
     </tbody>
   </table>
-  <p class="suave">Los trabajos no se eliminan (para conservar el historial); desactívelos para que no aparezcan al asignar.</p>
+  <p class="suave">Los trabajos no se eliminan (para conservar el historial); desactívelos para que no aparezcan al registrar reclamos.</p>
 </section>
 <?php pie();
