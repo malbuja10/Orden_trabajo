@@ -101,6 +101,19 @@ tfoot th, tfoot td { background: #f1f5f9; font-weight: 600; border-top: 2px soli
 .campo-recibido { background: #f0fdf4; border: 1px solid #bbe5c8; border-radius: 6px; padding: 8px 10px; font-size: .9rem; display: flex; gap: 12px; align-items: flex-start; }
 .foto-mini { width: 120px; height: 90px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
 .editando { background: #fff7e6; border: 1px solid #f3d08a; border-radius: 6px; padding: 8px 10px; }
+.grafico-scroll { overflow-x: auto; }
+.grafico { display: block; max-width: none; font-family: inherit; }
+.g-rejilla { stroke: #e6ebf1; stroke-width: 1; }
+.g-base { stroke: #94a3b8; stroke-width: 1; }
+.g-eje { fill: var(--suave); font-size: 11px; }
+.g-barra { fill: var(--azul); }
+.g-hit { fill: transparent; }
+.g-columna:hover .g-hit { fill: #0b5fa514; }
+.g-columna:hover .g-barra { fill: var(--azul-osc); }
+.g-valor { fill: var(--texto); font-size: 11px; font-weight: 600; }
+.g-etiqueta { fill: #3b4a5a; font-size: 11px; }
+.grafico-cab { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 16px; margin-bottom: 6px; }
+.grafico-cab h2 { margin: 0; }
 .leyenda { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .9rem; margin: 8px 0 0; }
 .leyenda-fila { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #eef1f5; }
 .indicadores { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }

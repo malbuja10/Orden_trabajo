@@ -45,6 +45,25 @@ $anual = q(
      FROM ordenes_trabajo WHERE estado <> 'anulada' GROUP BY 1 ORDER BY 1 DESC"
 )->fetchAll();
 
+// Graficos: trabajos finalizados por tipo en el mes elegido y en todo el anio (incluye tipos sin trabajos)
+$mesGrafico = (int) ($_GET['mes'] ?? ($anio === (int) date('Y') ? date('n') : 12));
+if ($mesGrafico < 1 || $mesGrafico > 12) {
+    $mesGrafico = 1;
+}
+$porTipo = function (?int $mes) use ($anio): array {
+    return q(
+        "SELECT t.nombre, COUNT(o.id) AS n
+         FROM trabajos t
+         LEFT JOIN ordenes_trabajo o ON o.trabajo_id = t.id AND o.estado = 'finalizada'
+              AND EXTRACT(YEAR FROM o.fecha_registro) = ? AND (?::int IS NULL OR EXTRACT(MONTH FROM o.fecha_registro) = ?)
+         GROUP BY t.id, t.nombre, t.activo HAVING t.activo OR COUNT(o.id) > 0
+         ORDER BY t.id",
+        [$anio, $mes, $mes]
+    )->fetchAll(PDO::FETCH_KEY_PAIR);
+};
+$graficoMes = $porTipo($mesGrafico);
+$graficoAnio = $porTipo(null);
+
 $tot = ['finalizada' => 0, 'pendiente' => 0];
 foreach ($porMes as $m) {
     foreach ($tot as $k => $_) {
@@ -58,8 +77,25 @@ cabecera('Resumen de Órdenes de Trabajo');
 ?>
 <form method="get" class="tarjeta filtros no-imprimir">
   <label>Año <select name="anio" onchange="this.form.submit()"><?= opciones(array_combine($anios, $anios), $anio) ?></select></label>
+  <input type="hidden" name="mes" value="<?= $mesGrafico ?>">
   <button type="button" onclick="window.print()">Imprimir</button>
 </form>
+
+<section class="tarjeta">
+  <form method="get" class="grafico-cab">
+    <h2>Trabajos realizados en <?= MESES[$mesGrafico] ?> de <?= $anio ?> <span class="contador"><?= array_sum($graficoMes) ?></span></h2>
+    <input type="hidden" name="anio" value="<?= $anio ?>">
+    <label class="no-imprimir">Mes <select name="mes" onchange="this.form.submit()"><?= opciones(MESES, $mesGrafico) ?></select></label>
+  </form>
+  <?= grafico_barras($graficoMes, 'Trabajos realizados en ' . MESES[$mesGrafico] . ' de ' . $anio) ?>
+</section>
+
+<section class="tarjeta">
+  <div class="grafico-cab">
+    <h2>Trabajos realizados en el año <?= $anio ?> <span class="contador"><?= array_sum($graficoAnio) ?></span></h2>
+  </div>
+  <?= grafico_barras($graficoAnio, 'Trabajos realizados en el año ' . $anio) ?>
+</section>
 
 <section class="tarjeta">
   <h2>Resumen mensual <?= $anio ?> — órdenes por mes del reclamo</h2>
@@ -118,7 +154,7 @@ cabecera('Resumen de Órdenes de Trabajo');
     <tbody>
     <?php foreach ($anual as $a): ?>
       <tr>
-        <th><a href="resumen.php?anio=<?= $a['anio'] ?>"><?= $a['anio'] ?></a></th>
+        <th><a href="resumen.php?anio=<?= $a['anio'] ?>&amp;mes=12"><?= $a['anio'] ?></a></th>
         <td><b><?= $a['total'] ?></b></td><td><?= $a['finalizadas'] ?></td><td><?= $a['pendientes'] ?></td>
         <td><?= $pct($a['finalizadas'], $a['total']) ?></td><td><?= $a['readoq'] ?></td>
       </tr>
