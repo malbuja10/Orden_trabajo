@@ -9,7 +9,7 @@ import 'mapa.dart';
 import 'orden.dart';
 
 /// Pantalla principal: lista y mapa de órdenes, con las acciones de
-/// cargar (servidor → teléfono) y descargar (teléfono → servidor).
+/// cargar pendientes (servidor → teléfono) y descargar finalizadas (teléfono → servidor).
 class PantallaInicio extends StatefulWidget {
   const PantallaInicio({super.key, required this.repo});
   final Repositorio repo;
@@ -65,23 +65,24 @@ class _PantallaInicioState extends State<PantallaInicio> {
           if (r.nuevas > 0) '${r.nuevas} nuevas',
           if (r.retiradas > 0) '${r.retiradas} retiradas',
         ].join(', ');
-        return 'Órdenes asignadas: ${r.recibidas}${extra.isEmpty ? '' : ' ($extra)'}.';
+        return 'Órdenes pendientes: ${r.recibidas}${extra.isEmpty ? '' : ' ($extra)'}.';
       });
 
   Future<void> _descargar() async {
     final n = repo.porEnviar;
     if (n == 0) {
-      avisar(context, 'No hay órdenes registradas por descargar.');
+      avisar(context, 'No hay órdenes finalizadas por descargar.');
       return;
     }
     await _sincronizar('Descargando $n…', () async {
-      final r = await repo.descargarRealizadas(
+      final r = await repo.descargarFinalizadas(
         progreso: (hechas, total) {
           if (mounted) setState(() => _ocupado = 'Descargando ${hechas + 1} de $total…');
         },
       );
       return [
         'Descargadas: ${r.enviadas}.',
+        if (r.yaRegistradas > 0) 'Ya registradas en la Web (no se modificaron): ${r.yaRegistradas}.',
         if (r.rechazadas > 0) 'Rechazadas por el servidor: ${r.rechazadas} (ver detalle en la lista).',
         if (r.interrumpida) 'Se perdió la conexión; el resto queda pendiente.',
       ].join(' ');
@@ -95,7 +96,7 @@ class _PantallaInicioState extends State<PantallaInicio> {
       builder: (c) => AlertDialog(
         title: const Text('Cerrar sesión'),
         content: Text(n > 0
-            ? 'Hay $n órdenes sin descargar. Quedan guardadas en el teléfono '
+            ? 'Hay $n órdenes finalizadas sin descargar. Quedan guardadas en el teléfono '
                 'y podrá descargarlas al volver a ingresar.'
             : '¿Desea salir?'),
         actions: [
@@ -128,12 +129,12 @@ class _PantallaInicioState extends State<PantallaInicio> {
         ),
         actions: [
           IconButton(
-            tooltip: 'Cargar órdenes del servidor',
+            tooltip: 'Cargar órdenes pendientes del servidor',
             icon: const Icon(Icons.cloud_download_outlined),
             onPressed: ocupado ? null : _cargar,
           ),
           IconButton(
-            tooltip: 'Descargar órdenes realizadas al servidor',
+            tooltip: 'Descargar órdenes finalizadas al servidor',
             icon: Badge(
               isLabelVisible: porEnviar > 0,
               label: Text('$porEnviar'),

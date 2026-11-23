@@ -1,5 +1,5 @@
 <?php
-// API a) Login.  POST {"correo": "...", "password": "..."}  ->  {"ok": true, "token": "...", "usuario": {...}}
+// API a) Login (solo supervisores).  POST {"correo": "...", "password": "..."}  ->  {"ok": true, "token": "...", "usuario": {...}}
 declare(strict_types=1);
 require __DIR__ . '/../../src/api.php';
 
@@ -15,6 +15,7 @@ $u = q('SELECT * FROM usuarios WHERE lower(correo) = ? AND activo', [$correo])->
 if (!$u || !password_verify($clave, $u['clave_hash'])) {
     api_error(401, 'Correo o contraseña incorrectos.');
 }
+api_solo_supervisor($u);
 
 q('DELETE FROM api_tokens WHERE expira_en < now()');
 $token = bin2hex(random_bytes(32));

@@ -92,6 +92,8 @@ class _PantallaLoginState extends State<PantallaLogin> {
                     const SizedBox(height: 8),
                     Text('Órdenes de Trabajo',
                         textAlign: TextAlign.center, style: tema.textTheme.headlineSmall),
+                    Text('Acceso para supervisores',
+                        textAlign: TextAlign.center, style: tema.textTheme.bodyMedium),
                     const SizedBox(height: 32),
                     TextFormField(
                       controller: _correo,

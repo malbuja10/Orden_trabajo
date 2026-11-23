@@ -11,10 +11,11 @@ agua potable (acometidas, fugas, adoquinamientos, etc.).
 1. El supervisor registra el reclamo empezando por la **cuenta**: si existe, se llenan el nombre, la
    dirección y la ubicación en el mapa. Si no existe, se llenan los datos a mano y se ubica el reclamo
    en el mapa (clic o buscador de calles). Cada reclamo es **directamente una Orden de Trabajo pendiente**.
-2. Cualquier operador puede realizar las órdenes pendientes (no hay asignación). Con la app móvil
-   cargan las pendientes y envían los datos de campo (foto, coordenadas exactas, detalle).
-3. Cuando los operadores regresan a la oficina, el supervisor **registra** quién hizo el trabajo
-   (fecha de registro, operador 1 y 2, readoquinamiento, detalle) y la orden queda **finalizada**.
+2. Cualquier operador puede realizar las órdenes pendientes (no hay asignación).
+3. El supervisor **registra** quién hizo el trabajo (fecha, operador 1 y 2, trabajo realizado,
+   observación, readoquinamiento, detalle) y la orden queda **finalizada**. Lo puede hacer en la Web
+   o en el campo con la [app móvil](movil/README.md) (solo supervisores), que funciona sin Internet;
+   al regresar a la oficina descarga al servidor las órdenes finalizadas.
 
 | Página | Archivo | Descripción |
 |---|---|---|
@@ -124,21 +125,21 @@ Para desarrollo: `php -S localhost:8080 -t public`.
 
 ## API para la app móvil
 
+Solo los usuarios con rol `supervisor` pueden usar el API (un operador recibe `403`).
 Todas las respuestas son JSON con `"ok": true|false` (y `"error"` cuando falla).
 Las funciones b) y c) requieren la cabecera `Authorization: Bearer <token>`.
 
 ### a) Login — `POST /api/login.php`
 
 ```json
-{"correo": "operador1@demo.local", "password": "demo12345"}
+{"correo": "supervisor@empresa.gob.ec", "password": "…"}
 ```
 
-Respuesta: `{"ok": true, "token": "…", "expira": "2026-12-14T16:12:03", "usuario": {"id": 2, "nombre": "…", "correo": "…", "rol": "operador"}}`
+Respuesta: `{"ok": true, "token": "…", "expira": "2026-12-14T16:12:03", "usuario": {"id": 1, "nombre": "…", "correo": "…", "rol": "supervisor"}}`
 
 ### b) Cargar órdenes pendientes — `GET /api/ordenes.php`
 
-Devuelve todas las órdenes pendientes (cualquier operador puede realizarlas), excepto las que ya
-tienen datos de campo enviados:
+Todas las órdenes pendientes y los catálogos para registrarlas (trabajos, observaciones y operadores activos):
 
 ```json
 {
@@ -146,29 +147,36 @@ tienen datos de campo enviados:
   "fecha_servidor": "2026-11-20T16:12:03",
   "ordenes": [{
     "id": 126, "fecha": "2026-11-17", "cuenta": "1017", "nombre": "…", "direccion": "…",
-    "telefono": "…", "trabajo_id": 4, "trabajo": "Cambio de medidor", "observacion": null,
-    "latitud": -0.22087, "longitud": -78.51774
-  }]
+    "telefono": "…", "trabajo_id": 4, "trabajo": "Cambio de medidor", "observacion_id": null,
+    "observacion": null, "latitud": -0.22087, "longitud": -78.51774
+  }],
+  "trabajos": [{"id": 4, "nombre": "Cambio de medidor", "color": "#2ca02c"}],
+  "observaciones": [{"id": 1, "nombre": "Cliente ausente"}],
+  "operadores": [{"id": 2, "nombre": "Juan Pérez"}]
 }
 ```
 
-### c) Descargar datos de campo — `POST /api/descargar.php`
+### c) Descargar órdenes finalizadas — `POST /api/descargar.php`
 
-`application/json` con la foto en base64:
+`application/json` con la foto (opcional) en base64:
 
 ```json
 {"ordenes": [
-  {"id": 126, "fecha": "2026-11-20T10:35:00", "latitud": -0.22091, "longitud": -78.51770,
-   "detalle": "Se cambió el medidor", "foto": "<JPEG/PNG/WebP en base64>"}
+  {"id": 126, "fecha_registro": "2026-11-20", "operador1_id": 2, "operador2_id": 3,
+   "trabajo_id": 4, "observacion_id": null, "readoquinamiento": true, "detalle": "Se cambió el medidor",
+   "fecha": "2026-11-20T10:35:00", "latitud": -0.22091, "longitud": -78.51770, "foto": "<JPEG/PNG/WebP en base64>"}
 ]}
 ```
 
 O bien `multipart/form-data` con el campo `datos` (el mismo JSON, sin `foto`) y un archivo
 `foto_<id>` por orden.
 
-La orden sigue pendiente hasta que el supervisor registra en la Web quién hizo el trabajo.
-Respuesta, con el resultado de cada orden (la app puede borrar localmente las que tengan `ok: true`;
-reenviar una orden ya recibida no la duplica):
+Cada orden queda **finalizada** con las mismas validaciones de la página Registrar órdenes
+(`fecha_registro` entre la fecha del reclamo y hoy, operador 1 obligatorio y distinto del 2).
+`fecha`, `latitud`, `longitud` y `foto` son los datos de campo (opcionales).
+Respuesta, con el resultado de cada orden (la app puede borrar localmente las que tengan `ok: true`).
+Si la orden ya estaba finalizada (reenvío, o se registró antes en la Web) no se modifica y se
+responde `ok: true` con `"ya_registrada": true`:
 
 ```json
 {"ok": true, "recibidas": 1, "registradas": 1, "resultados": [{"id": 126, "ok": true}]}

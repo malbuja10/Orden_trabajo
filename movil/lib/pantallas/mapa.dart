@@ -7,7 +7,7 @@ import '../estilo.dart';
 import '../modelos.dart';
 import '../ubicacion.dart';
 
-/// Mapa con las órdenes por realizar, realizadas y no realizadas.
+/// Mapa con las órdenes pendientes y finalizadas.
 ///
 /// Los marcadores salen de la base local y funcionan sin Internet; el fondo
 /// (OpenStreetMap) solo se ve con conexión o en las zonas ya visitadas (caché).
@@ -92,8 +92,8 @@ class _MapaOrdenesState extends State<MapaOrdenes> {
               ]),
               const SizedBox(height: 8),
               Text(o.direccion),
-              Text('${o.trabajo} · ${o.nombre}'),
-              Text(o.reclamo, maxLines: 2, overflow: TextOverflow.ellipsis),
+              Text([o.trabajo, if (o.cuenta != null) 'Cta. ${o.cuenta}', o.nombre].join(' · ')),
+              if (o.observacion != null) Text(o.observacion!),
               const SizedBox(height: 12),
               Align(
                 alignment: Alignment.centerRight,
@@ -102,7 +102,7 @@ class _MapaOrdenesState extends State<MapaOrdenes> {
                     Navigator.pop(c);
                     widget.alAbrir(o);
                   },
-                  child: Text(o.pendiente ? 'Registrar' : (o.enviada ? 'Ver' : 'Editar')),
+                  child: Text(o.pendiente ? 'Registrar finalizada' : (o.enviada ? 'Ver' : 'Editar')),
                 ),
               ),
             ],

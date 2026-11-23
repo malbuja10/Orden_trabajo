@@ -31,9 +31,23 @@ class RespuestaLogin {
 }
 
 class RespuestaOrdenes {
-  RespuestaOrdenes(this.ordenes, this.trabajos);
+  RespuestaOrdenes(this.ordenes, this.catalogos);
   final List<Orden> ordenes;
-  final List<Trabajo> trabajos;
+  final Catalogos catalogos;
+}
+
+/// Resultado del servidor para una orden descargada.
+class ResultadoEnvio {
+  const ResultadoEnvio({this.error, this.yaRegistrada = false, this.mensaje});
+
+  /// Mensaje si el servidor la rechazó (`null` = recibida).
+  final String? error;
+
+  /// Ya estaba finalizada en el servidor (p. ej. registrada en la Web): no se modificó.
+  final bool yaRegistrada;
+  final String? mensaje;
+
+  bool get ok => error == null;
 }
 
 /// Cliente del API del sistema Web (`/api/login.php`, `/api/ordenes.php`, `/api/descargar.php`).
@@ -109,7 +123,7 @@ class Api {
     return cuerpo;
   }
 
-  /// a) Login.
+  /// a) Login (solo supervisores).
   Future<RespuestaLogin> login(String base, String correo, String password) async {
     final uri = _uri(base, 'login.php');
     final j = await _enviar(
@@ -120,37 +134,42 @@ class Api {
       ),
       _espera,
     );
-    return RespuestaLogin(
-      Usuario.desdeJson(
-        (j['usuario'] as Map).cast<String, dynamic>(),
-        token: j['token'].toString(),
-      ),
-      j['expira']?.toString(),
+    final usuario = Usuario.desdeJson(
+      (j['usuario'] as Map).cast<String, dynamic>(),
+      token: j['token'].toString(),
     );
+    if (!usuario.esSupervisor) {
+      throw ErrorApi('Solo los supervisores pueden usar la app móvil.', codigo: 403);
+    }
+    return RespuestaLogin(usuario, j['expira']?.toString());
   }
 
-  /// b) Órdenes asignadas al operador y catálogo de trabajos.
+  /// b) Órdenes pendientes y catálogos (trabajos, observaciones, operadores).
   Future<RespuestaOrdenes> ordenes(String base, String token) async {
     final uri = _uri(base, 'ordenes.php');
     final j = await _enviar(
       () => _http.get(uri, headers: {'Authorization': 'Bearer $token'}),
       _espera,
     );
+    List<Opcion> lista(String clave) => [
+          for (final t in (j[clave] as List? ?? const []))
+            Opcion.desdeJson((t as Map).cast<String, dynamic>()),
+        ];
     return RespuestaOrdenes(
       [
         for (final o in j['ordenes'] as List)
           Orden.desdeJson((o as Map).cast<String, dynamic>()),
       ],
-      [
-        for (final t in (j['trabajos'] as List? ?? const []))
-          Trabajo.desdeJson((t as Map).cast<String, dynamic>()),
-      ],
+      Catalogos(
+        trabajos: lista('trabajos'),
+        observaciones: lista('observaciones'),
+        operadores: lista('operadores'),
+      ),
     );
   }
 
-  /// c) Descarga al servidor el resultado de una orden (con su foto, si tiene).
-  /// Devuelve `null` si se registró o el mensaje de error del servidor para esa orden.
-  Future<String?> descargar(String base, String token, Orden orden) async {
+  /// c) Descarga al servidor una orden finalizada (con su foto, si tiene).
+  Future<ResultadoEnvio> descargar(String base, String token, Orden orden) async {
     final uri = _uri(base, 'descargar.php');
     final j = await _enviar(() async {
       final p = http.MultipartRequest('POST', uri)
@@ -169,10 +188,12 @@ class Api {
     if (resultados is List) {
       for (final r in resultados) {
         if (r is Map && r['id'].toString() == orden.id.toString()) {
-          return r['ok'] == true ? null : (r['error'] ?? 'El servidor rechazó la orden.').toString();
+          return r['ok'] == true
+              ? ResultadoEnvio(yaRegistrada: r['ya_registrada'] == true, mensaje: r['mensaje']?.toString())
+              : ResultadoEnvio(error: (r['error'] ?? 'El servidor rechazó la orden.').toString());
         }
       }
     }
-    return 'El servidor no confirmó la orden.';
+    return const ResultadoEnvio(error: 'El servidor no confirmó la orden.');
   }
 }

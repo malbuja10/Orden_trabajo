@@ -25,9 +25,17 @@ class ResultadoCarga {
 }
 
 class ResultadoDescarga {
-  ResultadoDescarga({required this.enviadas, required this.rechazadas, this.interrumpida = false});
+  ResultadoDescarga({
+    required this.enviadas,
+    required this.rechazadas,
+    this.yaRegistradas = 0,
+    this.interrumpida = false,
+  });
   final int enviadas;
   final int rechazadas;
+
+  /// Ya estaban finalizadas en el servidor (registradas en la Web): no se modificaron.
+  final int yaRegistradas;
 
   /// Se perdió la conexión a mitad de la descarga; lo no enviado queda guardado.
   final bool interrumpida;
@@ -46,7 +54,7 @@ class Repositorio extends ChangeNotifier {
 
   Usuario? usuario;
   List<Orden> ordenes = [];
-  List<Trabajo> trabajos = [];
+  Catalogos catalogos = const Catalogos();
 
   int get porEnviar => ordenes.where((o) => o.porEnviar).length;
 
@@ -109,7 +117,7 @@ class Repositorio extends ChangeNotifier {
     final u = usuario;
     if (u == null) return;
     ordenes = await bd.ordenes(u.id);
-    trabajos = await bd.trabajos();
+    catalogos = await bd.catalogos();
     notifyListeners();
   }
 
@@ -137,10 +145,10 @@ class Repositorio extends ChangeNotifier {
 
   // ---------- Sincronización ----------
 
-  /// Carga del servidor las órdenes asignadas al usuario (necesita Internet).
+  /// Carga del servidor las órdenes pendientes y los catálogos (necesita Internet).
   Future<ResultadoCarga> cargarOrdenes() async {
     final r = await _conSesion((base, token) => api.ordenes(base, token));
-    final c = await bd.aplicarCarga(usuario!.id, r.ordenes, r.trabajos);
+    final c = await bd.aplicarCarga(usuario!.id, r.ordenes, r.catalogos);
     for (final f in c.fotos) {
       _borrarArchivo(f);
     }
@@ -148,41 +156,48 @@ class Repositorio extends ChangeNotifier {
     return ResultadoCarga(recibidas: r.ordenes.length, nuevas: c.nuevas, retiradas: c.retiradas);
   }
 
-  /// Descarga al servidor las órdenes realizadas / no realizadas (necesita Internet).
+  /// Descarga al servidor las órdenes finalizadas en el teléfono (necesita Internet).
   /// Se envía una orden por petición: si se corta la conexión, lo ya enviado queda marcado.
-  Future<ResultadoDescarga> descargarRealizadas({void Function(int hechas, int total)? progreso}) async {
+  Future<ResultadoDescarga> descargarFinalizadas({void Function(int hechas, int total)? progreso}) async {
     final u = usuario!;
     final pendientes = ordenes.where((o) => o.porEnviar).toList();
-    var enviadas = 0, rechazadas = 0, interrumpida = false;
+    var enviadas = 0, rechazadas = 0, yaRegistradas = 0, interrumpida = false;
     try {
       for (var i = 0; i < pendientes.length; i++) {
         final o = pendientes[i];
         progreso?.call(i, pendientes.length);
-        final String? error;
+        final ResultadoEnvio r;
         try {
-          error = await _conSesion((base, token) => api.descargar(base, token, o));
+          r = await _conSesion((base, token) => api.descargar(base, token, o));
         } on SinConexion {
-          if (enviadas + rechazadas == 0) rethrow;
+          if (enviadas + rechazadas + yaRegistradas == 0) rethrow;
           interrumpida = true;
           break;
         }
-        if (error == null) {
-          o.enviada = true;
-          o.errorEnvio = null;
-          enviadas++;
+        if (r.ok) {
+          o
+            ..enviada = true
+            ..errorEnvio = null
+            ..avisoEnvio = r.yaRegistrada ? r.mensaje : null;
+          r.yaRegistrada ? yaRegistradas++ : enviadas++;
         } else {
-          o.errorEnvio = error;
+          o.errorEnvio = r.error;
           rechazadas++;
         }
-        await bd.guardarEjecucion(u.id, o);
+        await bd.guardarRegistro(u.id, o);
       }
     } finally {
       notifyListeners();
     }
-    return ResultadoDescarga(enviadas: enviadas, rechazadas: rechazadas, interrumpida: interrumpida);
+    return ResultadoDescarga(
+      enviadas: enviadas,
+      rechazadas: rechazadas,
+      yaRegistradas: yaRegistradas,
+      interrumpida: interrumpida,
+    );
   }
 
-  // ---------- Trabajo en campo (sin Internet) ----------
+  // ---------- Registro en campo (sin Internet) ----------
 
   /// Guarda en el teléfono lo registrado para una orden.
   Future<void> guardarOrden(Orden o) async {
@@ -190,8 +205,24 @@ class Repositorio extends ChangeNotifier {
       throw StateError('La orden ya fue descargada al servidor.');
     }
     o.errorEnvio = null;
-    await bd.guardarEjecucion(usuario!.id, o);
+    await bd.guardarRegistro(usuario!.id, o);
+    if (!o.pendiente) {
+      // Se recuerdan fecha y operadores para agilizar el registro de las siguientes.
+      await bd.guardarConfig('ultimo_registro', jsonEncode({
+        'fecha': o.fechaRegistro,
+        'op1': o.operador1Id,
+        'op2': o.operador2Id,
+      }));
+    }
     notifyListeners();
+  }
+
+  /// Fecha y operadores del último registro (para proponerlos en el siguiente).
+  Future<({String? fecha, int? op1, int? op2})> ultimoRegistro() async {
+    final t = await bd.config('ultimo_registro');
+    if (t == null) return (fecha: null, op1: null, op2: null);
+    final j = jsonDecode(t) as Map<String, dynamic>;
+    return (fecha: j['fecha'] as String?, op1: j['op1'] as int?, op2: j['op2'] as int?);
   }
 
   void _borrarArchivo(String ruta) {

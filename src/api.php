@@ -39,6 +39,14 @@ function api_cuerpo(): array
     return is_array($datos) ? $datos : [];
 }
 
+/** La app movil es solo para supervisores. */
+function api_solo_supervisor(array $u): void
+{
+    if ($u['rol'] !== 'supervisor') {
+        api_error(403, 'Solo los supervisores pueden usar la app móvil.');
+    }
+}
+
 /** Valida el token "Authorization: Bearer <token>" y devuelve el usuario. */
 function api_usuario(): array
 {
@@ -62,5 +70,6 @@ function api_usuario(): array
     if (!$u) {
         api_error(401, 'Token no válido o expirado. Inicie sesión nuevamente.');
     }
+    api_solo_supervisor($u);
     return $u;
 }

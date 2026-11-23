@@ -8,20 +8,34 @@ class BaseDatos {
   BaseDatos._(this._db);
   final Database _db;
 
-  static const _version = 1;
+  /// 2: órdenes sin asignación (pendientes / finalizadas por el supervisor) y catálogos.
+  static const _version = 2;
 
   static Future<BaseDatos> abrir({DatabaseFactory? fabrica, String? ruta}) async {
     final f = fabrica ?? databaseFactory;
     final archivo = ruta ?? p.join(await f.getDatabasesPath(), 'ordenes_trabajo.db');
     final db = await f.openDatabase(
       archivo,
-      options: OpenDatabaseOptions(version: _version, onCreate: _crear),
+      options: OpenDatabaseOptions(version: _version, onCreate: _crear, onUpgrade: _actualizar),
     );
     return BaseDatos._(db);
   }
 
-  static Future<void> _crear(Database db, int version) async {
-    await db.execute('CREATE TABLE config (clave TEXT PRIMARY KEY, valor TEXT)');
+  /// La versión 1 (órdenes asignadas a operadores) no es compatible con el sistema actual:
+  /// se recrean las tablas. Se conservan la configuración (servidor, último correo).
+  static Future<void> _actualizar(Database db, int anterior, int nueva) async {
+    for (final t in ['usuarios', 'trabajos', 'ordenes', 'catalogos']) {
+      await db.execute('DROP TABLE IF EXISTS $t');
+    }
+    await _crearTablas(db, conConfig: false);
+  }
+
+  static Future<void> _crear(Database db, int version) => _crearTablas(db);
+
+  static Future<void> _crearTablas(Database db, {bool conConfig = true}) async {
+    if (conConfig) {
+      await db.execute('CREATE TABLE config (clave TEXT PRIMARY KEY, valor TEXT)');
+    }
     await db.execute('''
       CREATE TABLE usuarios (
         id INTEGER PRIMARY KEY,
@@ -33,45 +47,49 @@ class BaseDatos {
         sal TEXT NOT NULL,          -- para verificar la contraseña sin Internet
         clave_hash TEXT NOT NULL
       )''');
+    // Trabajos, observaciones y operadores para los combos del registro
     await db.execute('''
-      CREATE TABLE trabajos (
-        id INTEGER PRIMARY KEY,
+      CREATE TABLE catalogos (
+        tipo TEXT NOT NULL,
+        id INTEGER NOT NULL,
         nombre TEXT NOT NULL,
-        color TEXT NOT NULL
+        color TEXT,
+        PRIMARY KEY (tipo, id)
       )''');
     await db.execute('''
       CREATE TABLE ordenes (
         id INTEGER NOT NULL,
-        usuario_id INTEGER NOT NULL,
-        -- asignación (servidor)
-        fecha_asignacion TEXT NOT NULL,
-        trabajo_id INTEGER NOT NULL,
-        trabajo TEXT NOT NULL,
-        grupo TEXT NOT NULL,
-        observaciones TEXT,
-        readoquinamiento INTEGER NOT NULL DEFAULT 0,
-        latitud REAL,
-        longitud REAL,
-        reclamo_id INTEGER,
-        reclamo_fecha TEXT,
+        usuario_id INTEGER NOT NULL,     -- supervisor que trabaja con esta copia
+        -- reclamo (servidor)
+        fecha TEXT NOT NULL,
+        cuenta TEXT,
         nombre TEXT NOT NULL,
         direccion TEXT NOT NULL,
-        reclamo TEXT NOT NULL,
         telefono TEXT,
-        medidor TEXT,
-        reclamo_observaciones TEXT,
-        -- ejecución (teléfono)
+        trabajo_id INTEGER NOT NULL,
+        trabajo TEXT NOT NULL,
+        observacion_id INTEGER,
+        observacion TEXT,
+        latitud REAL,
+        longitud REAL,
+        -- registro del trabajo realizado (supervisor)
         estado TEXT NOT NULL DEFAULT 'pendiente',
-        fecha_realizacion TEXT,
-        trabajo_realizado_id INTEGER,
+        fecha_registro TEXT,
+        operador1_id INTEGER,
+        operador2_id INTEGER,
+        trabajo_reg_id INTEGER,
+        observacion_reg_id INTEGER,
+        readoquinamiento INTEGER NOT NULL DEFAULT 0,
         detalle TEXT,
-        readoquinamiento_real INTEGER,
-        latitud_real REAL,
-        longitud_real REAL,
+        -- datos de campo
+        fecha_campo TEXT,
+        latitud_campo REAL,
+        longitud_campo REAL,
         foto TEXT,
-        motivo TEXT,
+        -- sincronización
         enviada INTEGER NOT NULL DEFAULT 0,
         error_envio TEXT,
+        aviso_envio TEXT,
         PRIMARY KEY (id, usuario_id)
       )''');
   }
@@ -128,10 +146,19 @@ class BaseDatos {
   Future<void> borrarToken(int usuarioId) =>
       _db.update('usuarios', {'token': null}, where: 'id = ?', whereArgs: [usuarioId]);
 
-  // ---------- Trabajos ----------
+  // ---------- Catálogos ----------
 
-  Future<List<Trabajo>> trabajos() async =>
-      [for (final f in await _db.query('trabajos', orderBy: 'nombre')) Trabajo.desdeFila(f)];
+  Future<Catalogos> catalogos() async {
+    Future<List<Opcion>> de(TipoCatalogo t) async => [
+          for (final f in await _db.query('catalogos', where: 'tipo = ?', whereArgs: [t.name], orderBy: 'nombre'))
+            Opcion.desdeFila(f),
+        ];
+    return Catalogos(
+      trabajos: await de(TipoCatalogo.trabajo),
+      observaciones: await de(TipoCatalogo.observacion),
+      operadores: await de(TipoCatalogo.operador),
+    );
+  }
 
   // ---------- Órdenes ----------
 
@@ -140,37 +167,41 @@ class BaseDatos {
           'ordenes',
           where: 'usuario_id = ?',
           whereArgs: [usuarioId],
-          orderBy: 'fecha_asignacion, id',
+          orderBy: 'fecha, id',
         ))
           Orden.desdeFila(f),
       ];
 
-  /// Guarda lo que registró el operador para una orden.
-  Future<void> guardarEjecucion(int usuarioId, Orden o) => _db.update(
+  /// Guarda lo que registró el supervisor para una orden.
+  Future<void> guardarRegistro(int usuarioId, Orden o) => _db.update(
         'ordenes',
-        o.filaEjecucion(),
+        o.filaRegistro(),
         where: 'id = ? AND usuario_id = ?',
         whereArgs: [o.id, usuarioId],
       );
 
   /// Aplica una carga del servidor:
-  /// - actualiza el catálogo de trabajos;
-  /// - agrega las órdenes nuevas y actualiza la asignación de las existentes
-  ///   **sin tocar** lo ya registrado en el teléfono;
-  /// - retira las órdenes pendientes que el servidor ya no asigna a este operador
-  ///   y las que ya fueron descargadas.
+  /// - reemplaza los catálogos (trabajos, observaciones, operadores);
+  /// - agrega las órdenes pendientes nuevas y actualiza los datos del reclamo de las
+  ///   existentes **sin tocar** lo ya registrado en el teléfono;
+  /// - retira las pendientes que ya no están pendientes en el servidor (finalizadas en
+  ///   la Web o anuladas) y las que ya fueron descargadas.
   ///
   /// Devuelve las rutas de las fotos de las órdenes retiradas (para borrarlas).
   Future<({int nuevas, int retiradas, List<String> fotos})> aplicarCarga(
     int usuarioId,
     List<Orden> delServidor,
-    List<Trabajo> trabajos,
+    Catalogos catalogos,
   ) =>
       _db.transaction((t) async {
-        if (trabajos.isNotEmpty) {
-          await t.delete('trabajos');
-          for (final tr in trabajos) {
-            await t.insert('trabajos', tr.aFila());
+        await t.delete('catalogos');
+        for (final tipo in TipoCatalogo.values) {
+          for (final o in catalogos.de(tipo)) {
+            await t.insert(
+              'catalogos',
+              {'tipo': tipo.name, 'id': o.id, 'nombre': o.nombre, 'color': o.color},
+              conflictAlgorithm: ConflictAlgorithm.replace,
+            );
           }
         }
 
@@ -193,14 +224,14 @@ class BaseDatos {
             await t.insert('ordenes', {
               'id': o.id,
               'usuario_id': usuarioId,
-              ...o.filaAsignacion(),
+              ...o.filaReclamo(),
             });
             nuevas++;
           } else {
-            final cambios = o.filaAsignacion();
+            final cambios = o.filaReclamo();
             if (local['enviada'] == 1) {
-              // El servidor la volvió a asignar: vuelve a quedar por realizar.
-              cambios.addAll(Orden.desdeJson({'id': o.id, 'trabajo_id': o.trabajoId}).filaEjecucion());
+              // Sigue pendiente en el servidor (p. ej. se reabrió en la Web): vuelve a pendiente.
+              cambios.addAll(Orden.filaPendiente());
             }
             await t.update(
               'ordenes',

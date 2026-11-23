@@ -22,6 +22,10 @@ class OrdenesApp extends StatelessWidget {
     return MaterialApp(
       title: 'Órdenes de Trabajo',
       debugShowCheckedModeBanner: false,
+      // Calendario, textos de los diálogos, etc. en español
+      locale: const Locale('es'),
+      supportedLocales: const [Locale('es')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: colorPrimario),
         inputDecorationTheme: const InputDecorationTheme(border: OutlineInputBorder()),

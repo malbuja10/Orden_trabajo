@@ -2,10 +2,9 @@
 library;
 
 int _entero(Object? v) => v is int ? v : int.parse(v.toString());
-int? _enteroONulo(Object? v) => v == null ? null : _entero(v);
+int? _enteroONulo(Object? v) => (v == null || v.toString().isEmpty) ? null : _entero(v);
 double? _decimal(Object? v) =>
     v == null ? null : (v is num ? v.toDouble() : double.tryParse(v.toString()));
-bool _logico(Object? v) => v == true || v == 1 || v == 't' || v == 'true' || v == '1';
 String? _texto(Object? v) {
   final s = v?.toString().trim();
   return (s == null || s.isEmpty) ? null : s;
@@ -25,8 +24,10 @@ class Usuario {
   final String correo;
   final String rol;
 
-  /// Token del API (nulo si aún no se ha iniciado sesión con Internet).
+  /// Token del API (nulo si la sesión venció: hay que ingresar con Internet).
   final String? token;
+
+  bool get esSupervisor => rol == 'supervisor';
 
   factory Usuario.desdeJson(Map<String, dynamic> j, {String? token}) => Usuario(
         id: _entero(j['id']),
@@ -45,38 +46,61 @@ class Usuario {
       );
 }
 
-/// Tipo de trabajo (acometida, fuga, ...) con el color del mapa temático.
-class Trabajo {
-  const Trabajo({required this.id, required this.nombre, required this.color});
+/// Catálogos que envía el servidor para los combos del registro.
+enum TipoCatalogo { trabajo, observacion, operador }
+
+/// Elemento de un catálogo: tipo de trabajo (con su color), observación u operador.
+class Opcion {
+  const Opcion({required this.id, required this.nombre, this.color});
 
   final int id;
   final String nombre;
-  final String color;
+  final String? color;
 
-  factory Trabajo.desdeJson(Map<String, dynamic> j) => Trabajo(
+  factory Opcion.desdeJson(Map<String, dynamic> j) => Opcion(
         id: _entero(j['id']),
         nombre: j['nombre'].toString(),
-        color: (j['color'] ?? '#1f77b4').toString().trim(),
+        color: _texto(j['color']),
       );
 
-  factory Trabajo.desdeFila(Map<String, Object?> f) => Trabajo(
+  factory Opcion.desdeFila(Map<String, Object?> f) => Opcion(
         id: f['id'] as int,
         nombre: f['nombre'] as String,
-        color: f['color'] as String,
+        color: f['color'] as String?,
       );
-
-  Map<String, Object?> aFila() => {'id': id, 'nombre': nombre, 'color': color};
 }
 
-/// Estado local de una orden en el teléfono.
-enum EstadoOrden {
-  pendiente('pendiente', 'Por realizar'),
-  realizada('realizada', 'Realizada'),
-  noRealizada('no_realizada', 'No realizada');
+class Catalogos {
+  const Catalogos({this.trabajos = const [], this.observaciones = const [], this.operadores = const []});
 
-  const EstadoOrden(this.codigo, this.etiqueta);
+  final List<Opcion> trabajos;
+  final List<Opcion> observaciones;
+  final List<Opcion> operadores;
+
+  List<Opcion> de(TipoCatalogo t) => switch (t) {
+        TipoCatalogo.trabajo => trabajos,
+        TipoCatalogo.observacion => observaciones,
+        TipoCatalogo.operador => operadores,
+      };
+
+  String? nombre(TipoCatalogo t, int? id) {
+    if (id == null) return null;
+    for (final o in de(t)) {
+      if (o.id == id) return o.nombre;
+    }
+    return null;
+  }
+}
+
+/// Estado de una orden en el teléfono: solo hay pendientes y finalizadas.
+enum EstadoOrden {
+  pendiente('pendiente', 'Pendiente', 'Pendientes'),
+  finalizada('finalizada', 'Finalizada', 'Finalizadas');
+
+  const EstadoOrden(this.codigo, this.etiqueta, this.plural);
   final String codigo;
   final String etiqueta;
+  final String plural;
 
   static EstadoOrden desdeCodigo(String c) =>
       values.firstWhere((e) => e.codigo == c, orElse: () => pendiente);
@@ -85,192 +109,188 @@ enum EstadoOrden {
 class Orden {
   Orden({
     required this.id,
-    required this.fechaAsignacion,
-    required this.trabajoId,
-    required this.trabajo,
-    required this.grupo,
-    this.observaciones,
-    this.readoquinamiento = false,
-    this.latitud,
-    this.longitud,
-    this.reclamoId,
-    this.reclamoFecha,
+    required this.fecha,
+    this.cuenta,
     required this.nombre,
     required this.direccion,
-    required this.reclamo,
     this.telefono,
-    this.medidor,
-    this.reclamoObservaciones,
+    required this.trabajoId,
+    required this.trabajo,
+    this.observacionId,
+    this.observacion,
+    this.latitud,
+    this.longitud,
     this.estado = EstadoOrden.pendiente,
-    this.fechaRealizacion,
-    this.trabajoRealizadoId,
+    this.fechaRegistro,
+    this.operador1Id,
+    this.operador2Id,
+    this.trabajoRegId,
+    this.observacionRegId,
+    this.readoquinamiento = false,
     this.detalle,
-    this.readoquinamientoReal,
-    this.latitudReal,
-    this.longitudReal,
+    this.fechaCampo,
+    this.latitudCampo,
+    this.longitudCampo,
     this.foto,
-    this.motivo,
     this.enviada = false,
     this.errorEnvio,
+    this.avisoEnvio,
   });
 
-  // --- Asignación (viene del servidor) ---
+  // --- Reclamo (viene del servidor) ---
   final int id;
-  final String fechaAsignacion;
-  final int trabajoId;
-  final String trabajo;
-  final String grupo;
-  final String? observaciones;
-  final bool readoquinamiento;
-  final double? latitud;
-  final double? longitud;
-  final int? reclamoId;
-  final String? reclamoFecha;
+
+  /// Fecha del reclamo, `2026-11-17`.
+  final String fecha;
+  final String? cuenta;
   final String nombre;
   final String direccion;
-  final String reclamo;
   final String? telefono;
-  final String? medidor;
-  final String? reclamoObservaciones;
+  final int trabajoId;
+  final String trabajo;
+  final int? observacionId;
+  final String? observacion;
+  final double? latitud;
+  final double? longitud;
 
-  // --- Ejecución (se registra en el teléfono) ---
+  // --- Registro del trabajo realizado (supervisor, en el teléfono) ---
   EstadoOrden estado;
 
-  /// Fecha y hora local, formato `2026-11-14T10:35:00`.
-  String? fechaRealizacion;
-  int? trabajoRealizadoId;
+  /// Fecha en que se hizo el trabajo, `2026-11-20`.
+  String? fechaRegistro;
+  int? operador1Id;
+  int? operador2Id;
+  int? trabajoRegId;
+  int? observacionRegId;
+  bool readoquinamiento;
   String? detalle;
-  bool? readoquinamientoReal;
-  double? latitudReal;
-  double? longitudReal;
+
+  // --- Datos de campo (opcionales) ---
+  /// Fecha y hora local del registro en el teléfono, `2026-11-20T10:35:00`.
+  String? fechaCampo;
+  double? latitudCampo;
+  double? longitudCampo;
 
   /// Ruta local del archivo de la foto.
   String? foto;
-  String? motivo;
 
+  // --- Sincronización ---
   /// Ya se descargó al servidor (queda solo de consulta hasta la próxima carga).
   bool enviada;
   String? errorEnvio;
 
+  /// Mensaje del servidor al recibirla (p. ej. ya estaba registrada en la Web).
+  String? avisoEnvio;
+
   bool get pendiente => estado == EstadoOrden.pendiente;
 
-  /// Registrada en el teléfono y todavía no descargada al servidor.
+  /// Finalizada en el teléfono y todavía no descargada al servidor.
   bool get porEnviar => !pendiente && !enviada;
 
-  /// Ubicación para el mapa: la real tomada en campo o, si no hay, la del reclamo.
-  double? get lat => latitudReal ?? latitud;
-  double? get lng => longitudReal ?? longitud;
+  /// Ubicación para el mapa: la tomada en campo o, si no hay, la del reclamo.
+  double? get lat => latitudCampo ?? latitud;
+  double? get lng => longitudCampo ?? longitud;
 
-  factory Orden.desdeJson(Map<String, dynamic> j) {
-    final r = (j['reclamo'] as Map?)?.cast<String, dynamic>() ?? const {};
-    final grupo = j['grupo'];
-    return Orden(
-      id: _entero(j['id']),
-      fechaAsignacion: (j['fecha_asignacion'] ?? '').toString(),
-      trabajoId: _entero(j['trabajo_id']),
-      trabajo: (j['trabajo'] ?? '').toString(),
-      grupo: grupo is List ? grupo.join(' / ') : (grupo ?? '').toString(),
-      observaciones: _texto(j['observaciones']),
-      readoquinamiento: _logico(j['readoquinamiento']),
-      latitud: _decimal(j['latitud']),
-      longitud: _decimal(j['longitud']),
-      reclamoId: _enteroONulo(r['id']),
-      reclamoFecha: _texto(r['fecha']),
-      nombre: (r['nombre'] ?? '').toString(),
-      direccion: (r['direccion'] ?? '').toString(),
-      reclamo: (r['reclamo'] ?? '').toString(),
-      telefono: _texto(r['telefono']),
-      medidor: _texto(r['medidor']),
-      reclamoObservaciones: _texto(r['observaciones']),
-    );
-  }
+  /// Texto para buscar en la lista.
+  String get textoBusqueda =>
+      '$id ${cuenta ?? ''} $nombre $direccion $trabajo ${observacion ?? ''}'.toLowerCase();
+
+  factory Orden.desdeJson(Map<String, dynamic> j) => Orden(
+        id: _entero(j['id']),
+        fecha: (j['fecha'] ?? '').toString(),
+        cuenta: _texto(j['cuenta']),
+        nombre: (j['nombre'] ?? '').toString(),
+        direccion: (j['direccion'] ?? '').toString(),
+        telefono: _texto(j['telefono']),
+        trabajoId: _entero(j['trabajo_id']),
+        trabajo: (j['trabajo'] ?? '').toString(),
+        observacionId: _enteroONulo(j['observacion_id']),
+        observacion: _texto(j['observacion']),
+        latitud: _decimal(j['latitud']),
+        longitud: _decimal(j['longitud']),
+      );
 
   factory Orden.desdeFila(Map<String, Object?> f) => Orden(
         id: f['id'] as int,
-        fechaAsignacion: f['fecha_asignacion'] as String,
-        trabajoId: f['trabajo_id'] as int,
-        trabajo: f['trabajo'] as String,
-        grupo: f['grupo'] as String,
-        observaciones: f['observaciones'] as String?,
-        readoquinamiento: f['readoquinamiento'] == 1,
-        latitud: f['latitud'] as double?,
-        longitud: f['longitud'] as double?,
-        reclamoId: f['reclamo_id'] as int?,
-        reclamoFecha: f['reclamo_fecha'] as String?,
+        fecha: f['fecha'] as String,
+        cuenta: f['cuenta'] as String?,
         nombre: f['nombre'] as String,
         direccion: f['direccion'] as String,
-        reclamo: f['reclamo'] as String,
         telefono: f['telefono'] as String?,
-        medidor: f['medidor'] as String?,
-        reclamoObservaciones: f['reclamo_observaciones'] as String?,
+        trabajoId: f['trabajo_id'] as int,
+        trabajo: f['trabajo'] as String,
+        observacionId: f['observacion_id'] as int?,
+        observacion: f['observacion'] as String?,
+        latitud: f['latitud'] as double?,
+        longitud: f['longitud'] as double?,
         estado: EstadoOrden.desdeCodigo(f['estado'] as String),
-        fechaRealizacion: f['fecha_realizacion'] as String?,
-        trabajoRealizadoId: f['trabajo_realizado_id'] as int?,
+        fechaRegistro: f['fecha_registro'] as String?,
+        operador1Id: f['operador1_id'] as int?,
+        operador2Id: f['operador2_id'] as int?,
+        trabajoRegId: f['trabajo_reg_id'] as int?,
+        observacionRegId: f['observacion_reg_id'] as int?,
+        readoquinamiento: f['readoquinamiento'] == 1,
         detalle: f['detalle'] as String?,
-        readoquinamientoReal:
-            f['readoquinamiento_real'] == null ? null : f['readoquinamiento_real'] == 1,
-        latitudReal: f['latitud_real'] as double?,
-        longitudReal: f['longitud_real'] as double?,
+        fechaCampo: f['fecha_campo'] as String?,
+        latitudCampo: f['latitud_campo'] as double?,
+        longitudCampo: f['longitud_campo'] as double?,
         foto: f['foto'] as String?,
-        motivo: f['motivo'] as String?,
         enviada: f['enviada'] == 1,
         errorEnvio: f['error_envio'] as String?,
+        avisoEnvio: f['aviso_envio'] as String?,
       );
 
-  /// Columnas de la asignación (lo que envía el servidor).
-  Map<String, Object?> filaAsignacion() => {
-        'fecha_asignacion': fechaAsignacion,
-        'trabajo_id': trabajoId,
-        'trabajo': trabajo,
-        'grupo': grupo,
-        'observaciones': observaciones,
-        'readoquinamiento': readoquinamiento ? 1 : 0,
-        'latitud': latitud,
-        'longitud': longitud,
-        'reclamo_id': reclamoId,
-        'reclamo_fecha': reclamoFecha,
+  /// Columnas del reclamo (lo que envía el servidor).
+  Map<String, Object?> filaReclamo() => {
+        'fecha': fecha,
+        'cuenta': cuenta,
         'nombre': nombre,
         'direccion': direccion,
-        'reclamo': reclamo,
         'telefono': telefono,
-        'medidor': medidor,
-        'reclamo_observaciones': reclamoObservaciones,
+        'trabajo_id': trabajoId,
+        'trabajo': trabajo,
+        'observacion_id': observacionId,
+        'observacion': observacion,
+        'latitud': latitud,
+        'longitud': longitud,
       };
 
-  /// Columnas de la ejecución (lo que registra el operador).
-  Map<String, Object?> filaEjecucion() => {
+  /// Columnas del registro (lo que ingresa el supervisor).
+  Map<String, Object?> filaRegistro() => {
         'estado': estado.codigo,
-        'fecha_realizacion': fechaRealizacion,
-        'trabajo_realizado_id': trabajoRealizadoId,
+        'fecha_registro': fechaRegistro,
+        'operador1_id': operador1Id,
+        'operador2_id': operador2Id,
+        'trabajo_reg_id': trabajoRegId,
+        'observacion_reg_id': observacionRegId,
+        'readoquinamiento': readoquinamiento ? 1 : 0,
         'detalle': detalle,
-        'readoquinamiento_real':
-            readoquinamientoReal == null ? null : (readoquinamientoReal! ? 1 : 0),
-        'latitud_real': latitudReal,
-        'longitud_real': longitudReal,
+        'fecha_campo': fechaCampo,
+        'latitud_campo': latitudCampo,
+        'longitud_campo': longitudCampo,
         'foto': foto,
-        'motivo': motivo,
         'enviada': enviada ? 1 : 0,
         'error_envio': errorEnvio,
+        'aviso_envio': avisoEnvio,
       };
 
+  /// Registro vacío: la orden vuelve a pendiente.
+  static Map<String, Object?> filaPendiente() => Orden(
+        id: 0, fecha: '', nombre: '', direccion: '', trabajoId: 0, trabajo: '',
+      ).filaRegistro();
+
   /// Cuerpo para `POST /api/descargar.php` (la foto va aparte, como archivo).
-  Map<String, Object?> aJsonDescarga() => estado == EstadoOrden.realizada
-      ? {
-          'id': id,
-          'realizada': true,
-          'fecha_realizacion': fechaRealizacion,
-          'trabajo_id': trabajoRealizadoId ?? trabajoId,
-          'detalle': detalle,
-          'readoquinamiento': readoquinamientoReal ?? false,
-          'latitud': latitudReal,
-          'longitud': longitudReal,
-        }
-      : {
-          'id': id,
-          'realizada': false,
-          'fecha_realizacion': fechaRealizacion,
-          'motivo_no_realizada': motivo,
-          'latitud': latitudReal,
-          'longitud': longitudReal,
-        };
+  Map<String, Object?> aJsonDescarga() => {
+        'id': id,
+        'fecha_registro': fechaRegistro,
+        'operador1_id': operador1Id,
+        'operador2_id': operador2Id,
+        'trabajo_id': trabajoRegId ?? trabajoId,
+        'observacion_id': observacionRegId,
+        'readoquinamiento': readoquinamiento,
+        'detalle': detalle,
+        'fecha': fechaCampo,
+        'latitud': latitudCampo,
+        'longitud': longitudCampo,
+      };
 }
